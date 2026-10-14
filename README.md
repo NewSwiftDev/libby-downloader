@@ -54,6 +54,30 @@ Xcode 16 or newer is required. This environment does not build the Xcode project
 
 The macOS extension is sandboxed with outgoing network access and read-write access to Downloads. Those entitlements are in `macOS (Extension)/LibbyDownloaderExtension.entitlements`.
 
+### Installing permanently (without Xcode running)
+
+Safari loads the extension from the containing app. After the steps below, quit Xcode. Launch `libby-downloader.app` once so macOS registers the extension, then quit the app too. Safari starts the extension when a Libby page needs it.
+
+Sign with your Apple Developer team before you archive. In Signing & Capabilities, set the same team on the macOS app and the macOS extension. The project file still names team `8DJHS9AWYU`; change it if that is not yours. A team signature is what lets Safari keep the extension turned on. **Develop > Allow Unsigned Extensions** applies only to the current Safari launch and is cleared every time Safari quits.
+
+1. Select the **libby-downloader (macOS)** scheme and set the run destination to **My Mac** (not an iPhone or a simulator).
+2. Choose **Product > Archive**.
+3. In the Organizer, select the archive and click **Distribute App**.
+4. Choose **Custom**, then **Development**. Xcode re-signs the app and the embedded extension with your Apple Development certificate. Export the folder and move `libby-downloader.app` to `/Applications`, replacing any older copy.
+5. Quit Safari if it is open. Launch the app from `/Applications` once, then turn **Libby Downloader** on in **Safari > Settings > Extensions** and allow `libbyapp.com`.
+
+**Copy App**, the other Custom method for Mac, exports with no signature. That build still needs Allow Unsigned Extensions, so it disappears after Safari quits. Use Development for a copy you leave in `/Applications`.
+
+A Run from Xcode also registers the app under `~/Library/Developer/Xcode/DerivedData/`. Safari can show two Libby Downloader entries, and the DerivedData one vanishes the next time that folder is cleaned. After the `/Applications` copy is enabled, delete the DerivedData build (or use **Product > Clean Build Folder**) and leave only the `/Applications` entry on. `pluginkit -mAvvv -p com.apple.Safari.web-extension` prints the path of each registered copy.
+
+To update, quit Safari, archive again with the same bundle ID, export with Custom > Development, replace `/Applications/libby-downloader.app`, and launch the new app once. Safari keeps the extension on when the bundle ID and team are unchanged.
+
+If the extension is missing after a restart:
+
+- The enabled copy was unsigned, or it lived only in DerivedData. Launch the app in `/Applications` and enable that entry.
+- A free Personal Team profile lasts about 7 days. When it expires, archive again and replace the app. A paid membership’s development profile lasts about a year. **Direct Distribution** (Developer ID, notarized) is the export that does not depend on that profile.
+- The app was moved or renamed after registration. Put `libby-downloader.app` back in `/Applications` and launch it once.
+
 ### iPhone and iPad
 
 1. Select the **libby-downloader (iOS)** scheme and run it on a device or a simulator that includes Safari.
