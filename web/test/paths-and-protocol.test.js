@@ -8,6 +8,7 @@ import {
   buildSaveFromUrlMessage,
   buildSaveTextMessage,
   interpretNativeResponse,
+  nativeResponseIsOk,
 } from '../lib/native-protocol.js';
 import {
   APP_GROUP_ID,
@@ -22,7 +23,7 @@ import {
   sanitizeFilename,
 } from '../lib/paths.js';
 import { selectSaveStrategy, storagePlan, supportsMainWorldCapture } from '../lib/platform.js';
-import { formatCookieHeader, isAllowedChapterURL } from '../lib/urls.js';
+import { chapterFetchCredentials, formatCookieHeader, isAllowedChapterHost, isAllowedChapterURL } from '../lib/urls.js';
 import { validateBookData, validateOrigin } from '../lib/validators.js';
 
 const chapterURL = 'https://dewey-abc.listen.libbyapp.com/spine/0.mp3?cmpt=1';
@@ -73,13 +74,21 @@ describe('paths', () => {
 });
 
 describe('urls and platform', () => {
-  it('allows only Libby HTTPS chapter URLs', () => {
+  it('allows Libby chapter URLs and the OverDrive CDN they redirect to', () => {
     assert.equal(isAllowedChapterURL(chapterURL), true);
     assert.equal(isAllowedChapterURL('https://libbyapp.com/a.mp3'), true);
+    assert.equal(
+      isAllowedChapterURL('https://audioclips.cdn.overdrive.com/x.mp3?cmpt=signed'),
+      true
+    );
+    assert.equal(isAllowedChapterHost('cdn.overdrive.com'), true);
+    assert.equal(isAllowedChapterHost('notcdn.overdrive.com'), false);
     assert.equal(isAllowedChapterURL('http://listen.libbyapp.com/a.mp3'), false);
     assert.equal(isAllowedChapterURL('https://evil.com/a.mp3'), false);
     assert.equal(isAllowedChapterURL('https://libbyapp.com.evil.com/a.mp3'), false);
+    assert.equal(isAllowedChapterURL('https://evil.cdn.overdrive.com.evil.com/a.mp3'), false);
     assert.equal(isAllowedChapterURL('not a url'), false);
+    assert.equal(chapterFetchCredentials(), 'omit');
   });
 
   it('builds a cookie header and drops injected or huge values', () => {
@@ -178,6 +187,21 @@ describe('native protocol', () => {
       platform: 'macos',
     });
     assert.equal(saved.ok, true);
+    assert.equal(nativeResponseIsOk(1), true);
+    const plist = interpretNativeResponse({ ok: 1, path: '/Downloads/libby-downloads/Book' });
+    assert.equal(plist.ok, true);
+    const detailed = interpretNativeResponse({
+      ok: false,
+      error: 'http-403',
+      status: 403,
+      detail: 'HTTP 403 from audioclips.cdn.overdrive.com',
+    });
+    assert.equal(detailed.ok, false);
+    if (!detailed.ok) {
+      assert.equal(detailed.error.code, 'http-403');
+      assert.equal(detailed.error.fallback, true);
+      assert.equal(detailed.error.message, 'http-403: HTTP 403 from audioclips.cdn.overdrive.com');
+    }
   });
 });
 

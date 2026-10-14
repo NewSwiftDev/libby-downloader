@@ -27,11 +27,7 @@ export function createNativeSaver(sendNative, { cookiesForUrl } = {}) {
         const response = await sendNative(NATIVE_APPLICATION, buildPingMessage());
         return interpretNativeResponse(response);
       } catch (error) {
-        const wrapped = /** @type {Error & { fallback?: boolean }} */ (
-          new Error(error instanceof Error ? error.message : 'native-channel')
-        );
-        wrapped.fallback = true;
-        return { ok: false, error: wrapped };
+        return { ok: false, error: nativeChannelError(error) };
       }
     },
 
@@ -58,10 +54,8 @@ export function createNativeSaver(sendNative, { cookiesForUrl } = {}) {
       let response;
       try {
         response = await sendNative(NATIVE_APPLICATION, message);
-      } catch {
-        const wrapped = /** @type {Error & { fallback?: boolean }} */ (new Error('native-channel'));
-        wrapped.fallback = true;
-        throw wrapped;
+      } catch (error) {
+        throw nativeChannelError(error);
       }
       const parsed = interpretNativeResponse(response);
       if (!parsed.ok) throw parsed.error;
@@ -81,14 +75,22 @@ export function createNativeSaver(sendNative, { cookiesForUrl } = {}) {
       let response;
       try {
         response = await sendNative(NATIVE_APPLICATION, message);
-      } catch {
-        const wrapped = /** @type {Error & { fallback?: boolean }} */ (new Error('native-channel'));
-        wrapped.fallback = true;
-        throw wrapped;
+      } catch (error) {
+        throw nativeChannelError(error);
       }
       const parsed = interpretNativeResponse(response);
       if (!parsed.ok) throw parsed.error;
       return parsed.path;
     },
   };
+}
+
+/**
+ * @param {unknown} error
+ */
+function nativeChannelError(error) {
+  const message = error instanceof Error && error.message ? error.message : 'native-channel';
+  const wrapped = /** @type {Error & { fallback?: boolean }} */ (new Error(message));
+  wrapped.fallback = true;
+  return wrapped;
 }

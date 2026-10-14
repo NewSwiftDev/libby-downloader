@@ -58,15 +58,27 @@ export function buildSaveTextMessage({ title, text }) {
 }
 
 /**
+ * Safari sometimes delivers plist booleans as 1.
+ * @param {unknown} value
+ */
+export function nativeResponseIsOk(value) {
+  return value === true || value === 1 || value === 'true';
+}
+
+/**
  * @param {unknown} response
- * @returns {{ ok: true, path: string, platform?: string } | { ok: false, error: Error & { fallback?: boolean, status?: number } }}
+ * @returns {{ ok: true, path: string, platform?: string } | { ok: false, error: Error & { fallback?: boolean, status?: number, code?: string } }}
  */
 export function interpretNativeResponse(response) {
   const record =
     response && typeof response === 'object' ? /** @type {Record<string, unknown>} */ (response) : null;
-  if (!record || record.ok !== true) {
+  if (!record || !nativeResponseIsOk(record.ok)) {
     const code = record && typeof record.error === 'string' ? record.error : 'native-save-failed';
-    const error = /** @type {Error & { fallback?: boolean, status?: number }} */ (new Error(code));
+    const detail = record && typeof record.detail === 'string' ? record.detail : '';
+    const error = /** @type {Error & { fallback?: boolean, status?: number, code?: string }} */ (
+      new Error(detail ? `${code}: ${detail}` : code)
+    );
+    error.code = code;
     error.fallback = !code.startsWith('invalid-');
     if (typeof record?.status === 'number') error.status = record.status;
     return { ok: false, error };

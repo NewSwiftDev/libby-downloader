@@ -12,6 +12,7 @@
 //
 
 import Foundation
+import os.log
 
 enum DownloadStore {
     static let appGroupIdentifier = "group.com.libbydownloader.safari"
@@ -34,18 +35,18 @@ enum DownloadStore {
     }
 
     private static func ping() -> [String: Any] {
-        var response = baseStatus()
         do {
-            _ = try storageRoot()
+            let root = try storageRoot()
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            var response = baseStatus()
             response["ok"] = true
+            response["path"] = root.resolvingSymlinksInPath().path
+            return response
         } catch let error as StorageAccessError {
-            response["ok"] = false
-            response["error"] = error.code
+            return failure(error.code, detail: error.detail)
         } catch {
-            response["ok"] = false
-            response["error"] = "io"
+            return failure("downloads-unavailable", detail: errorText(error))
         }
-        return response
     }
 
     private static func saveFromUrl(_ message: [String: Any]) -> [String: Any] {
@@ -61,9 +62,9 @@ enum DownloadStore {
         do {
             root = try storageRoot()
         } catch let error as StorageAccessError {
-            return failure(error.code)
+            return failure(error.code, detail: error.detail)
         } catch {
-            return failure("io")
+            return failure("io", detail: errorText(error))
         }
         guard let destination = containedDestination(relativePath, root: root, requiredSuffix: ".mp3") else {
             return failure("invalid-path")
@@ -72,12 +73,10 @@ enum DownloadStore {
         do {
             try download(url, to: destination, cookie: safeCookieHeader(message["cookie"]))
             return ["ok": true, "path": destination.path, "platform": platformName()]
-        } catch DownloadStoreError.http(let status) {
-            return ["ok": false, "error": "http-\(status)", "status": status]
-        } catch DownloadStoreError.timeout {
-            return failure("timeout")
+        } catch let error as DownloadStoreError {
+            return error.response
         } catch {
-            return failure("io")
+            return failure("io", detail: errorText(error))
         }
     }
 
@@ -94,9 +93,9 @@ enum DownloadStore {
         do {
             root = try storageRoot()
         } catch let error as StorageAccessError {
-            return failure(error.code)
+            return failure(error.code, detail: error.detail)
         } catch {
-            return failure("io")
+            return failure("io", detail: errorText(error))
         }
         guard let destination = containedDestination(relativePath, root: root, requiredSuffix: "/metadata.json") else {
             return failure("invalid-path")
@@ -106,7 +105,7 @@ enum DownloadStore {
             try write(text, to: destination)
             return ["ok": true, "path": destination.path, "platform": platformName()]
         } catch {
-            return failure("io")
+            return failure("io", detail: errorText(error))
         }
     }
 
@@ -157,18 +156,24 @@ enum DownloadStore {
         return url
     }
 
+    /// Keep in sync with CHAPTER_HOST_SUFFIXES in web/lib/urls.js.
+    static func isAllowedFetchHost(_ host: String) -> Bool {
+        let normalized = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        let suffixes = ["libbyapp.com", "cdn.overdrive.com"]
+        return suffixes.contains { suffix in
+            normalized == suffix || normalized.hasSuffix("." + suffix)
+        }
+    }
+
     private static func allowedChapterURL(_ string: String) -> URL? {
         guard let url = URL(string: string),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https",
-              let host = url.host?.lowercased()
+              url.scheme?.lowercased() == "https",
+              let host = url.host,
+              isAllowedFetchHost(host)
         else {
             return nil
         }
-        if host == "libbyapp.com" || host.hasSuffix(".libbyapp.com") {
-            return url
-        }
-        return nil
+        return url
     }
 
     private static func safeCookieHeader(_ value: Any?) -> String? {
@@ -181,50 +186,17 @@ enum DownloadStore {
     private static func download(_ url: URL, to destination: URL, cookie: String?) throws {
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
+        request.httpShouldHandleCookies = false
         request.setValue(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
             forHTTPHeaderField: "User-Agent"
         )
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
         if let cookie {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
-
-        let semaphore = DispatchSemaphore(value: 0)
-        var outcome: Result<Void, Error> = .failure(DownloadStoreError.timeout)
-        let task = URLSession.shared.downloadTask(with: request) { temporary, response, error in
-            defer { semaphore.signal() }
-            if let error {
-                outcome = .failure(error)
-                return
-            }
-            guard let http = response as? HTTPURLResponse else {
-                outcome = .failure(DownloadStoreError.http(0))
-                return
-            }
-            guard (200 ..< 300).contains(http.statusCode), let temporary else {
-                outcome = .failure(DownloadStoreError.http(http.statusCode))
-                return
-            }
-            do {
-                try FileManager.default.createDirectory(
-                    at: destination.deletingLastPathComponent(),
-                    withIntermediateDirectories: true
-                )
-                if FileManager.default.fileExists(atPath: destination.path) {
-                    try FileManager.default.removeItem(at: destination)
-                }
-                try FileManager.default.moveItem(at: temporary, to: destination)
-                outcome = .success(())
-            } catch {
-                outcome = .failure(error)
-            }
-        }
-        task.resume()
-        if semaphore.wait(timeout: .now() + 150) == .timedOut {
-            task.cancel()
-            throw DownloadStoreError.timeout
-        }
-        try outcome.get()
+        os_log(.default, "Libby Downloader fetching host=%{public}@", url.host ?? "")
+        try ChapterTransfer(destination: destination).run(request)
     }
 
     private static func write(_ text: String, to destination: URL) throws {
@@ -257,14 +229,147 @@ enum DownloadStore {
         ]
     }
 
-    private static func failure(_ error: String) -> [String: Any] {
-        ["ok": false, "error": error]
+    fileprivate static func failure(_ error: String, detail: String? = nil, status: Int? = nil) -> [String: Any] {
+        var result: [String: Any] = ["ok": false, "error": error]
+        if let detail, !detail.isEmpty {
+            result["detail"] = String(detail.prefix(500))
+        }
+        if let status {
+            result["status"] = status
+        }
+        return result
+    }
+
+    fileprivate static func errorText(_ error: Error) -> String {
+        let ns = error as NSError
+        if ns.localizedDescription.isEmpty {
+            return "\(ns.domain) \(ns.code)"
+        }
+        return "\(ns.domain) \(ns.code): \(ns.localizedDescription)"
+    }
+
+    /// URLSession follow of the signed listen.libbyapp.com URL. The CDN
+    /// response is not subject to page CORS. Cookies are removed when the
+    /// host changes so Libby cookies are not sent to audioclips.cdn.overdrive.com.
+    private final class ChapterTransfer: NSObject, URLSessionDownloadDelegate {
+        private let destination: URL
+        private let semaphore = DispatchSemaphore(value: 0)
+        private var redirectFailure: DownloadStoreError?
+        private var recorded: Error?
+        private var saved = false
+        private var finished = false
+
+        init(destination: URL) {
+            self.destination = destination
+        }
+
+        func run(_ request: URLRequest) throws {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 120
+            configuration.timeoutIntervalForResource = 150
+            configuration.httpShouldSetCookies = false
+            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            let session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
+            let task = session.downloadTask(with: request)
+            task.resume()
+            if semaphore.wait(timeout: .now() + 150) == .timedOut {
+                task.cancel()
+                session.invalidateAndCancel()
+                throw DownloadStoreError.timeout
+            }
+            session.finishTasksAndInvalidate()
+            if let redirectFailure {
+                throw redirectFailure
+            }
+            if saved { return }
+            if let recorded { throw recorded }
+            throw DownloadStoreError.http(status: 0, host: nil)
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            willPerformHTTPRedirection response: HTTPURLResponse,
+            newRequest request: URLRequest,
+            completionHandler: @escaping (URLRequest?) -> Void
+        ) {
+            guard let next = request.url,
+                  next.scheme?.lowercased() == "https",
+                  let host = next.host,
+                  DownloadStore.isAllowedFetchHost(host)
+            else {
+                let host = request.url?.host ?? "unknown"
+                os_log(.error, "Libby Downloader blocked redirect host=%{public}@", host)
+                redirectFailure = .redirectBlocked(host)
+                completionHandler(nil)
+                return
+            }
+            var redirected = request
+            let originalHost = task.originalRequest?.url?.host?.lowercased()
+            if originalHost != host.lowercased() {
+                redirected.setValue(nil, forHTTPHeaderField: "Cookie")
+            }
+            os_log(.default, "Libby Downloader following redirect host=%{public}@", host)
+            completionHandler(redirected)
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            downloadTask: URLSessionDownloadTask,
+            didFinishDownloadingTo location: URL
+        ) {
+            if redirectFailure != nil { return }
+            guard let http = downloadTask.response as? HTTPURLResponse else {
+                recorded = DownloadStoreError.http(status: 0, host: nil)
+                return
+            }
+            let host = http.url?.host
+            guard (200 ..< 300).contains(http.statusCode) else {
+                recorded = DownloadStoreError.http(status: http.statusCode, host: host)
+                return
+            }
+            do {
+                try FileManager.default.createDirectory(
+                    at: destination.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                if FileManager.default.fileExists(atPath: destination.path) {
+                    try FileManager.default.removeItem(at: destination)
+                }
+                try FileManager.default.moveItem(at: location, to: destination)
+                saved = true
+            } catch {
+                recorded = error
+            }
+        }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+            if finished { return }
+            finished = true
+            if recorded == nil, let error, !saved, redirectFailure == nil {
+                recorded = error
+            }
+            semaphore.signal()
+        }
     }
 }
 
 private enum DownloadStoreError: Error {
-    case http(Int)
+    case http(status: Int, host: String?)
     case timeout
+    case redirectBlocked(String)
+
+    var response: [String: Any] {
+        switch self {
+        case let .http(status, host):
+            let whereFrom = host.map { " from \($0)" } ?? ""
+            return DownloadStore.failure("http-\(status)", detail: "HTTP \(status)\(whereFrom)", status: status)
+        case .timeout:
+            return DownloadStore.failure("timeout", detail: "The chapter download timed out")
+        case let .redirectBlocked(host):
+            return DownloadStore.failure("redirect-blocked", detail: "Refusing redirect to \(host)")
+        }
+    }
 }
 
 private enum StorageAccessError: Error {
@@ -274,6 +379,13 @@ private enum StorageAccessError: Error {
         switch self {
         case .appGroupUnavailable:
             return "app-group-unavailable"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .appGroupUnavailable:
+            return "App group \(DownloadStore.appGroupIdentifier) is not available"
         }
     }
 }

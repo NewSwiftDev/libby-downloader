@@ -63,7 +63,10 @@ describe('assembled extension packages', () => {
     assert.match(read('Shared (Extension)/Resources/background.js'), /createNativeSaver/);
     assert.match(read('Shared (Extension)/Resources/background.js'), /createChromeSaver/);
     assert.match(read('Shared (Extension)/Resources/iframe-ui.js'), /function isAllowedChapterURL/);
-    assert.match(read('Shared (Extension)/Resources/iframe-ui.js'), /credentials:\s*'include'/);
+    assert.match(read('Shared (Extension)/Resources/iframe-ui.js'), /chapterFetchCredentials\(\)/);
+    assert.doesNotMatch(read('Shared (Extension)/Resources/iframe-ui.js'), /credentials:\s*'include'/);
+    assert.ok(safari.host_permissions.some((pattern) => pattern.includes('cdn.overdrive.com')));
+    assert.match(read('web/background.js'), /Native save failed; falling back/);
     assert.doesNotMatch(read('Shared (Extension)/Resources/content.js'), /^\s*export\s+/m);
     assert.ok(existsSync(join(chromeRoot, 'icons/icon128.png')));
     assert.ok(existsSync(join(safariRoot, 'icons/icon48.png')));
@@ -112,9 +115,14 @@ describe('Xcode project', () => {
     assert.match(store, /group\.com\.libbydownloader\.safari/);
     assert.match(store, /libby-downloads/);
     assert.match(store, /libbyapp\.com/);
+    assert.match(store, /cdn\.overdrive\.com/);
+    assert.match(store, /willPerformHTTPRedirection/);
     assert.match(store, /\.\./);
     assert.match(store, /metadata\.json/);
-    assert.match(read('Shared (Extension)/SafariWebExtensionHandler.swift'), /SFExtensionMessageKey/);
+    const handler = read('Shared (Extension)/SafariWebExtensionHandler.swift');
+    assert.match(handler, /SFExtensionMessageKey/);
+    assert.doesNotMatch(handler, /group\.wait/);
+    assert.match(handler, /native result error=/);
     assert.match(read('LICENSE'), /MIT License/);
     assert.match(read('LICENSE'), /libby-downloader contributors/);
   });

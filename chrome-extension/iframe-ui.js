@@ -122,9 +122,24 @@ function containedRelativePath(relativePath) {
 }
 
 /**
- * Chapter URLs are only fetched when they stay on Libby's HTTPS hosts.
+ * Chapter URLs are only fetched from Libby and the OverDrive CDN Libby
+ * redirects to. audioclips.cdn.overdrive.com answers with
+ * Access-Control-Allow-Origin: *, so a credentialed page fetch is rejected.
+ * Keep this host list in sync with DownloadStore.isAllowedFetchHost.
  * Copyright (c) 2026 libby-downloader contributors.
  */
+
+const CHAPTER_HOST_SUFFIXES = ['libbyapp.com', 'cdn.overdrive.com'];
+
+/**
+ * @param {unknown} hostname
+ * @returns {boolean}
+ */
+function isAllowedChapterHost(hostname) {
+  if (typeof hostname !== 'string' || !hostname) return false;
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  return CHAPTER_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+}
 
 /**
  * @param {unknown} urlString
@@ -139,9 +154,17 @@ function isAllowedChapterURL(urlString) {
     return false;
   }
   if (url.protocol !== 'https:') return false;
-  const host = url.hostname.toLowerCase();
-  if (host !== 'libbyapp.com' && !host.endsWith('.libbyapp.com')) return false;
-  return true;
+  return isAllowedChapterHost(url.hostname);
+}
+
+/**
+ * Page fetches must omit cookies. The signed listen.libbyapp.com URL
+ * redirects to the OverDrive CDN, and a credentialed request cannot use
+ * that host's wildcard CORS header.
+ * @returns {'omit'}
+ */
+function chapterFetchCredentials() {
+  return 'omit';
 }
 
 /**
@@ -257,13 +280,18 @@ function triggerBlobDownload(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-async function runBlobFallback(book, startIndex) {
+async function runBlobFallback(book, startIndex, reason) {
   const chapters = Array.isArray(book?.chapters) ? book.chapters : [];
   const title = book?.metadata?.title || 'Untitled';
   let saved = 0;
   let failed = 0;
+  console.error(
+    '[Libby Downloader] Page download fallback:',
+    reason || 'no reason provided'
+  );
   createProgressOverlay();
-  updateProgressOverlay(startIndex, chapters.length, 'Saving through Safari downloads...');
+  const summary = reason ? `Native save failed: ${reason}` : 'Saving through Safari downloads...';
+  updateProgressOverlay(startIndex, chapters.length, summary.slice(0, 180));
 
   for (let index = startIndex; index < chapters.length; index++) {
     const chapter = chapters[index];
@@ -271,7 +299,12 @@ async function runBlobFallback(book, startIndex) {
       if (!isAllowedChapterURL(chapter.url)) {
         throw new Error('Refusing chapter URL outside Libby');
       }
-      const response = await fetch(chapter.url, { credentials: 'include' });
+      // credentials must stay 'omit'. listen.libbyapp.com redirects to
+      // audioclips.cdn.overdrive.com, which replies with ACAO: *.
+      const response = await fetch(chapter.url, {
+        credentials: chapterFetchCredentials(),
+        redirect: 'follow',
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       triggerBlobDownload(await response.blob(), flatDownloadFilename(title, index));
       saved += 1;
@@ -336,7 +369,11 @@ if (ext?.runtime?.onMessage) {
   ext.runtime.onMessage.addListener((message) => {
     if (!message || message.type !== MessageTypes.DOWNLOAD_FALLBACK || !message.data) return;
     const startIndex = Number.isInteger(message.startIndex) ? message.startIndex : 0;
-    runBlobFallback(message.data, startIndex);
+    console.error(
+      '[Libby Downloader] Native save did not finish:',
+      message.reason || 'unknown reason'
+    );
+    runBlobFallback(message.data, startIndex, message.reason);
   });
 }
 

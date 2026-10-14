@@ -148,15 +148,31 @@ describe('native saver', () => {
     assert.equal(sent[1].message.action, 'saveFromUrl');
   });
 
-  it('marks a dead native channel as a fallback', async () => {
+  it('marks a dead native channel as a fallback and keeps the runtime error', async () => {
     const saver = createNativeSaver(async () => {
-      throw new Error('disconnected');
+      throw new Error('The native application is not running');
     });
     const ping = await saver.ping();
     assert.equal(ping.ok, false);
+    if (!ping.ok) assert.equal(ping.error.message, 'The native application is not running');
     await assert.rejects(saver.saveChapter(chapters[0], 'Test Book', 0), (error) => {
       assert.equal(error.fallback, true);
+      assert.equal(error.message, 'The native application is not running');
       return true;
     });
+  });
+
+  it('forwards a CDN chapter URL to the containing app', async () => {
+    const cdnChapter = {
+      url: 'https://audioclips.cdn.overdrive.com/clip.mp3?cmpt=signed',
+    };
+    let sent;
+    const saver = createNativeSaver(async (_application, message) => {
+      sent = message;
+      return { ok: true, path: '/Users/me/Downloads/libby-downloads/Test Book/chapter-001.mp3' };
+    });
+    await saver.saveChapter(cdnChapter, 'Test Book', 0);
+    assert.equal(sent.url, cdnChapter.url);
+    assert.equal(sent.action, 'saveFromUrl');
   });
 });

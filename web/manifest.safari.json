@@ -11,7 +11,11 @@
     "512": "images/icon-512.png"
   },
   "permissions": ["cookies"],
-  "host_permissions": ["*://*.libbyapp.com/*", "*://*.listen.libbyapp.com/*"],
+  "host_permissions": [
+    "*://*.libbyapp.com/*",
+    "*://*.listen.libbyapp.com/*",
+    "*://*.cdn.overdrive.com/*"
+  ],
   "background": {
     "scripts": ["background.js"],
     "type": "module"

@@ -101,13 +101,18 @@ function triggerBlobDownload(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-async function runBlobFallback(book, startIndex) {
+async function runBlobFallback(book, startIndex, reason) {
   const chapters = Array.isArray(book?.chapters) ? book.chapters : [];
   const title = book?.metadata?.title || 'Untitled';
   let saved = 0;
   let failed = 0;
+  console.error(
+    '[Libby Downloader] Page download fallback:',
+    reason || 'no reason provided'
+  );
   createProgressOverlay();
-  updateProgressOverlay(startIndex, chapters.length, 'Saving through Safari downloads...');
+  const summary = reason ? `Native save failed: ${reason}` : 'Saving through Safari downloads...';
+  updateProgressOverlay(startIndex, chapters.length, summary.slice(0, 180));
 
   for (let index = startIndex; index < chapters.length; index++) {
     const chapter = chapters[index];
@@ -115,7 +120,12 @@ async function runBlobFallback(book, startIndex) {
       if (!isAllowedChapterURL(chapter.url)) {
         throw new Error('Refusing chapter URL outside Libby');
       }
-      const response = await fetch(chapter.url, { credentials: 'include' });
+      // credentials must stay 'omit'. listen.libbyapp.com redirects to
+      // audioclips.cdn.overdrive.com, which replies with ACAO: *.
+      const response = await fetch(chapter.url, {
+        credentials: chapterFetchCredentials(),
+        redirect: 'follow',
+      });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       triggerBlobDownload(await response.blob(), flatDownloadFilename(title, index));
       saved += 1;
@@ -180,7 +190,11 @@ if (ext?.runtime?.onMessage) {
   ext.runtime.onMessage.addListener((message) => {
     if (!message || message.type !== MessageTypes.DOWNLOAD_FALLBACK || !message.data) return;
     const startIndex = Number.isInteger(message.startIndex) ? message.startIndex : 0;
-    runBlobFallback(message.data, startIndex);
+    console.error(
+      '[Libby Downloader] Native save did not finish:',
+      message.reason || 'unknown reason'
+    );
+    runBlobFallback(message.data, startIndex, message.reason);
   });
 }
 

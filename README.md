@@ -11,7 +11,7 @@ The Chrome package still uses `chrome.downloads`. Safari has no downloads API, s
 | Chrome | `~/Downloads/libby-downloads/<title>/chapter-NNN.mp3` and `metadata.json`, via `chrome.downloads` |
 | Safari on Mac | The same folder. The extension sends each chapter URL to the app, and the app downloads it into `~/Downloads` |
 | Safari on iPhone or iPad | App Group `group.com.libbydownloader.safari`, under `libby-downloads/<title>/`. The app can copy that folder into Files |
-| Safari fallback | If the app cannot write, the player frame fetches each chapter with the page cookies and hands the blob to Safari’s download manager. Those files are flat (`Title - chapter-NNN.mp3`), not in a folder |
+| Safari fallback | If the app cannot write, the player frame fetches each signed chapter URL without cookies and hands the blob to Safari’s download manager. Those files are flat (`Title - chapter-NNN.mp3`), not in a folder |
 
 `metadata.json` keeps the same `{ metadata, chapters }` shape the upstream tool uses.
 
@@ -31,7 +31,7 @@ The Chrome package still uses `chrome.downloads`. Safari has no downloads API, s
 
 - MAIN-world capture is required to build chapter URLs. Safari added `world: "MAIN"` content scripts in Safari 18. Older Safari loads the rest of the extension, but extraction will not see Libby’s page objects.
 - Let the audiobook play for a few seconds before downloading so Libby publishes its crypto parameters. This is the same requirement as the Chrome extension.
-- The native app only fetches `https://*.libbyapp.com` URLs. Other hosts are refused.
+- The native app fetches the signed `https://*.libbyapp.com` chapter URL and follows its redirect to `https://*.cdn.overdrive.com`. Other hosts are refused. A page fetch cannot use cookies on that redirect: the CDN replies with `Access-Control-Allow-Origin: *`.
 - iOS does not have a user-visible `~/Downloads` directory for the extension. Files go to the app group. Open the Libby Downloader app and tap **Show Downloaded Books** to copy them into the Files app. If the app group entitlement is missing, Safari saves flat files instead.
 - Safari may ask before saving several files in a row when the fallback path is used.
 - The upstream command-line tagger and M4B merger are not part of this port. `metadata.json` is still written so that tool can be pointed at a finished folder.
@@ -97,7 +97,7 @@ The background script sends JSON dictionaries. The app replies with `{ "ok": tru
 | Action | Purpose |
 | --- | --- |
 | `ping` | Reports `platform` (`macos` or `ios`) and whether storage is `downloads` or `app-group` |
-| `saveFromUrl` | Downloads an allowed chapter URL to `<title>/chapter-NNN.mp3`. An optional `cookie` header is forwarded |
+| `saveFromUrl` | Downloads an allowed chapter URL to `<title>/chapter-NNN.mp3`, following the redirect onto the OverDrive CDN. An optional `cookie` header is sent only to the original Libby host |
 | `saveText` | Writes `<title>/metadata.json` |
 
 A transport failure or an HTTP error switches the remaining chapters to the in-page blob fallback. `invalid-url` and `invalid-path` do not.

@@ -1,7 +1,22 @@
 /**
- * Chapter URLs are only fetched when they stay on Libby's HTTPS hosts.
+ * Chapter URLs are only fetched from Libby and the OverDrive CDN Libby
+ * redirects to. audioclips.cdn.overdrive.com answers with
+ * Access-Control-Allow-Origin: *, so a credentialed page fetch is rejected.
+ * Keep this host list in sync with DownloadStore.isAllowedFetchHost.
  * Copyright (c) 2026 libby-downloader contributors.
  */
+
+const CHAPTER_HOST_SUFFIXES = ['libbyapp.com', 'cdn.overdrive.com'];
+
+/**
+ * @param {unknown} hostname
+ * @returns {boolean}
+ */
+export function isAllowedChapterHost(hostname) {
+  if (typeof hostname !== 'string' || !hostname) return false;
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  return CHAPTER_HOST_SUFFIXES.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+}
 
 /**
  * @param {unknown} urlString
@@ -16,9 +31,17 @@ export function isAllowedChapterURL(urlString) {
     return false;
   }
   if (url.protocol !== 'https:') return false;
-  const host = url.hostname.toLowerCase();
-  if (host !== 'libbyapp.com' && !host.endsWith('.libbyapp.com')) return false;
-  return true;
+  return isAllowedChapterHost(url.hostname);
+}
+
+/**
+ * Page fetches must omit cookies. The signed listen.libbyapp.com URL
+ * redirects to the OverDrive CDN, and a credentialed request cannot use
+ * that host's wildcard CORS header.
+ * @returns {'omit'}
+ */
+export function chapterFetchCredentials() {
+  return 'omit';
 }
 
 /**

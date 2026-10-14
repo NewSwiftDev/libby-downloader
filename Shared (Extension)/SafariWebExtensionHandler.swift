@@ -23,28 +23,36 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             relativePath
         )
 
-        let result = Self.perform(message)
-        let response = NSExtensionItem()
-        if #available(iOS 15.0, macOS 11.0, *) {
-            response.userInfo = [SFExtensionMessageKey: result]
-        } else {
-            response.userInfo = ["message": result]
-        }
-        context.completeRequest(returningItems: [response], completionHandler: nil)
-    }
-
-    private static func perform(_ message: [String: Any]) -> [String: Any] {
-        let group = DispatchGroup()
-        group.enter()
-        var result: [String: Any] = ["ok": false, "error": "not-completed"]
+        // Download on a background queue and reply when it finishes.
+        // Waiting here blocked the extension's main thread for the whole
+        // transfer, and Safari dropped the native message before the file
+        // was written.
         DispatchQueue.global(qos: .userInitiated).async {
-            result = DownloadStore.handle(message)
-            group.leave()
+            let result = DownloadStore.handle(message)
+            if let error = result["error"] as? String {
+                os_log(
+                    .error,
+                    "Libby Downloader native result error=%{public}@ detail=%{public}@",
+                    error,
+                    result["detail"] as? String ?? ""
+                )
+            } else {
+                os_log(
+                    .default,
+                    "Libby Downloader native result ok path=%{public}@",
+                    result["path"] as? String ?? ""
+                )
+            }
+            let response = NSExtensionItem()
+            if #available(iOS 15.0, macOS 11.0, *) {
+                response.userInfo = [SFExtensionMessageKey: result]
+            } else {
+                response.userInfo = ["message": result]
+            }
+            DispatchQueue.main.async {
+                context.completeRequest(returningItems: [response], completionHandler: nil)
+            }
         }
-        if group.wait(timeout: .now() + 180) == .timedOut {
-            return ["ok": false, "error": "timeout"]
-        }
-        return result
     }
 
     private static func messageDictionary(from context: NSExtensionContext) -> [String: Any] {
