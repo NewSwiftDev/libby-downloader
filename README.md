@@ -11,7 +11,7 @@ The Chrome package still uses `chrome.downloads`. Safari has no downloads API, s
 | Chrome | `~/Downloads/libby-downloads/<title>/chapter-NNN.mp3` and `metadata.json`, via `chrome.downloads` |
 | Safari on Mac | The same folder. The extension sends each chapter URL to the app, and the app downloads it into `~/Downloads` |
 | Safari on iPhone or iPad | App Group `group.com.libbydownloader.safari`, under `libby-downloads/<title>/`. The app can copy that folder into Files |
-| Safari fallback | If the app cannot write, the player frame fetches each signed chapter URL without cookies and hands the blob to Safari’s download manager. Those files are flat (`Title - chapter-NNN.mp3`), not in a folder |
+| Safari fallback | If the app cannot fetch a chapter, the player saves a flat file through Safari and the app moves it into `libby-downloads/<title>/`. `metadata.json` is still written once, by the app |
 
 `metadata.json` keeps the same `{ metadata, chapters }` shape the upstream tool uses.
 
@@ -23,7 +23,7 @@ The Chrome package still uses `chrome.downloads`. Safari has no downloads API, s
 | Read `window.BIF` and the odread crypto parameters in the page MAIN world | Yes | Safari 18 or newer | Safari 18 or newer |
 | Organized `chapter-NNN.mp3` folders | Yes | Yes, through the containing app | Yes, in the app group |
 | `metadata.json` next to the chapters | Yes | Yes | Yes |
-| Page-cookie fetch when the app cannot save | Not used | Flat files in Safari downloads | Flat files in Safari downloads |
+| Page fetch when the app cannot save a URL | Not used | App moves the flat download into the book folder | App group when native messaging works |
 | Toolbar popup with save status | Yes | Yes | Yes |
 | CLI tagging and M4B merge from the upstream project | Not in this port | No | No |
 
@@ -98,6 +98,7 @@ The background script sends JSON dictionaries. The app replies with `{ "ok": tru
 | --- | --- |
 | `ping` | Reports `platform` (`macos` or `ios`) and whether storage is `downloads` or `app-group` |
 | `saveFromUrl` | Downloads an allowed chapter URL to `<title>/chapter-NNN.mp3`, following the redirect onto the OverDrive CDN. An optional `cookie` header is sent only to the original Libby host |
-| `saveText` | Writes `<title>/metadata.json` |
+| `saveText` | Writes `<title>/metadata.json` once per book |
+| `moveFlat` | Moves a flat `Title - chapter-NNN.mp3` from `~/Downloads` into the book folder |
 
 A transport failure or an HTTP error switches the remaining chapters to the in-page blob fallback. `invalid-url` and `invalid-path` do not.

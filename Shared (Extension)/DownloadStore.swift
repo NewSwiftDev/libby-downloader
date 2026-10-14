@@ -29,6 +29,8 @@ enum DownloadStore {
             return saveFromUrl(message)
         case "saveText":
             return saveText(message)
+        case "moveFlat":
+            return moveFlat(message)
         default:
             return failure("unknown-action")
         }
@@ -109,6 +111,17 @@ enum DownloadStore {
         }
     }
 
+    private static func downloadsDirectory() throws -> URL {
+        #if os(iOS)
+        throw StorageAccessError.flatDownloadsUnavailable
+        #else
+        if let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+            return downloads
+        }
+        return URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads", isDirectory: true)
+        #endif
+    }
+
     private static func storageRoot() throws -> URL {
         #if os(iOS)
         guard let container = FileManager.default.containerURL(
@@ -118,10 +131,72 @@ enum DownloadStore {
         }
         return container.appendingPathComponent(downloadsSubdirectory, isDirectory: true)
         #else
-        let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads", isDirectory: true)
-        return downloads.appendingPathComponent(downloadsSubdirectory, isDirectory: true)
+        return try downloadsDirectory().appendingPathComponent(downloadsSubdirectory, isDirectory: true)
         #endif
+    }
+
+    /// Moves ~/Downloads/<flat name> into ~/Downloads/libby-downloads/<title>/.
+    /// Safari's <a download> attribute cannot create that folder.
+    private static func moveFlat(_ message: [String: Any]) -> [String: Any] {
+        guard let flatName = message["flatName"] as? String,
+              let relativePath = message["relativePath"] as? String,
+              isSafeFlatName(flatName)
+        else {
+            return failure("invalid-path")
+        }
+        let root: URL
+        let downloads: URL
+        do {
+            downloads = try downloadsDirectory()
+            root = try storageRoot()
+        } catch let error as StorageAccessError {
+            return failure(error.code, detail: error.detail)
+        } catch {
+            return failure("io", detail: errorText(error))
+        }
+        guard let destination = containedDestination(relativePath, root: root, requiredSuffix: ".mp3") else {
+            return failure("invalid-path")
+        }
+        guard let source = waitForFlatFile(flatName, in: downloads, timeout: 30) else {
+            return failure("missing-file", detail: "\(flatName) was not in Downloads")
+        }
+        do {
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.removeItem(at: destination)
+            }
+            try FileManager.default.moveItem(at: source, to: destination)
+            return ["ok": true, "path": destination.path, "platform": platformName()]
+        } catch {
+            return failure("io", detail: errorText(error))
+        }
+    }
+
+    private static func isSafeFlatName(_ name: String) -> Bool {
+        if name.isEmpty || name.count > 240 { return false }
+        if name.contains("/") || name.contains("\\") || name.contains("..") { return false }
+        if name.hasPrefix(".") { return false }
+        if name.contains("\n") || name.contains("\r") { return false }
+        return name.hasSuffix(".mp3")
+    }
+
+    private static func waitForFlatFile(_ name: String, in downloads: URL, timeout: TimeInterval) -> URL? {
+        let source = downloads.appendingPathComponent(name, isDirectory: false)
+        let downloadsPath = downloads.standardizedFileURL.path
+        let sourcePath = source.standardizedFileURL.path
+        let parent = (sourcePath as NSString).deletingLastPathComponent
+        if parent != downloadsPath { return nil }
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if FileManager.default.fileExists(atPath: sourcePath) {
+                return source
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return nil
     }
 
     private static func containedDestination(
@@ -374,11 +449,14 @@ private enum DownloadStoreError: Error {
 
 private enum StorageAccessError: Error {
     case appGroupUnavailable
+    case flatDownloadsUnavailable
 
     var code: String {
         switch self {
         case .appGroupUnavailable:
             return "app-group-unavailable"
+        case .flatDownloadsUnavailable:
+            return "flat-downloads-unavailable"
         }
     }
 
@@ -386,6 +464,8 @@ private enum StorageAccessError: Error {
         switch self {
         case .appGroupUnavailable:
             return "App group \(DownloadStore.appGroupIdentifier) is not available"
+        case .flatDownloadsUnavailable:
+            return "Safari flat downloads are not in an app-group folder on iOS"
         }
     }
 }

@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { createMetadataGate } from '../lib/metadata-gate.js';
 import { buildMetadataDocument } from '../lib/metadata.js';
 import {
   NATIVE_APPLICATION,
   buildPingMessage,
+  buildMoveFlatMessage,
   buildSaveFromUrlMessage,
   buildSaveTextMessage,
   interpretNativeResponse,
+  isSafeFlatDownloadName,
   nativeResponseIsOk,
 } from '../lib/native-protocol.js';
 import {
@@ -195,6 +198,28 @@ describe('native protocol', () => {
         }),
       /outside Libby/
     );
+  });
+
+  it('moves a flat Safari download into the book folder', () => {
+    assert.deepEqual(buildMoveFlatMessage({ title: 'The Runaway Jury', index: 0 }), {
+      action: 'moveFlat',
+      flatName: 'The Runaway Jury - chapter-001.mp3',
+      relativePath: 'The Runaway Jury/chapter-001.mp3',
+    });
+    assert.equal(isSafeFlatDownloadName('The Runaway Jury - chapter-001.mp3'), true);
+    assert.equal(isSafeFlatDownloadName('The Runaway Jury/chapter-001.mp3'), false);
+    assert.equal(isSafeFlatDownloadName('../chapter-001.mp3'), false);
+  });
+
+  it('writes metadata.json once', () => {
+    const gate = createMetadataGate();
+    assert.equal(gate.claim(), true);
+    assert.equal(gate.claim(), false);
+    assert.equal(gate.written, true);
+    gate.revoke();
+    assert.equal(gate.claim(), true);
+    gate.reset();
+    assert.equal(gate.written, false);
   });
 
   it('saves metadata.json beside the chapters', () => {

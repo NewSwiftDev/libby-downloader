@@ -9,6 +9,7 @@
 import { createChromeSaver } from './lib/chrome-downloads.js';
 import { downloadAllChapters } from './lib/download-orchestrator.js';
 import { MessageTypes } from './lib/messages.js';
+import { createMetadataGate } from './lib/metadata-gate.js';
 import { createNativeSaver } from './lib/native-saver.js';
 import { withTimeout } from './lib/page-fallback.js';
 import { describeSaveStrategy, detectBrowserName } from './lib/platform.js';
@@ -16,6 +17,7 @@ import { isAllowedChapterURL } from './lib/urls.js';
 import { validateBookData } from './lib/validators.js';
 
 const ext = globalThis.browser ?? globalThis.chrome;
+const metadataGate = createMetadataGate();
 
 const state = {
   phase: 'idle',
@@ -223,6 +225,30 @@ async function nativeCall(work, timeoutMs, label) {
   }
 }
 
+function currentNativeSaver() {
+  const capabilities = collectCapabilities();
+  if (capabilities.strategy !== 'native' || !capabilities.nativeRuntime) return null;
+  return createNativeSaver((application, message) => invokeNative(capabilities.nativeRuntime, application, message), {
+    cookiesForUrl: cookieList,
+  });
+}
+
+async function writeMetadataOnce(book, save) {
+  if (!metadataGate.claim()) {
+    log('Metadata already written; skipping a second copy');
+    return { ok: true, skipped: true };
+  }
+  try {
+    await save();
+    return { ok: true, skipped: false };
+  } catch (error) {
+    metadataGate.revoke();
+    const message = error instanceof Error ? error.message : 'metadata failed';
+    console.error('[Libby Downloader] Failed to save metadata file:', message);
+    return { ok: false, error: message };
+  }
+}
+
 function decisionResult(selected, strategy, reason, extra = {}) {
   log(`Save decision: ${selected} → ${strategy}. ${reason}`);
   return { success: true, selected, strategy, reason, ...extra };
@@ -236,6 +262,7 @@ async function handleStartDownload(bookData, tabId) {
   state.completed = 0;
   state.failed = 0;
   state.total = book.chapters.length;
+  metadataGate.reset();
   state.strategy = decision.strategy;
   state.detail = decision.reason;
   log(
@@ -261,11 +288,7 @@ async function handleStartDownload(bookData, tabId) {
       saveChapter: (chapter, title, index) => saver.saveChapter(chapter, title, index),
       onProgress,
     });
-    try {
-      await saver.saveMetadata(book.metadata, book.chapters, book.metadata.title);
-    } catch (error) {
-      console.error('[Libby Downloader] Failed to save metadata file:', error);
-    }
+    await writeMetadataOnce(book, () => saver.saveMetadata(book.metadata, book.chapters, book.metadata.title));
     await finish(tabId, result);
     return decisionResult('chrome-downloads', 'chrome-downloads', decision.reason, { result });
   }
@@ -313,13 +336,6 @@ async function handleStartDownload(bookData, tabId) {
     });
 
     if (result.fallback) {
-      if (result.completed > 0) {
-        try {
-          await saver.saveMetadata(book.metadata, book.chapters, book.metadata.title);
-        } catch (error) {
-          console.error('[Libby Downloader] Failed to save metadata file:', error);
-        }
-      }
       const chapterError = result.errors[result.errors.length - 1]?.error || 'native-save-failed';
       const reason = await requestFallback(
         tabId,
@@ -335,11 +351,7 @@ async function handleStartDownload(bookData, tabId) {
       });
     }
 
-    try {
-      await saver.saveMetadata(book.metadata, book.chapters, book.metadata.title);
-    } catch (error) {
-      console.error('[Libby Downloader] Failed to save metadata file:', error);
-    }
+    await writeMetadataOnce(book, () => saver.saveMetadata(book.metadata, book.chapters, book.metadata.title));
     await finish(tabId, result);
     return decisionResult('native', 'native', `${decision.reason}; ping ok`, { result });
   }
@@ -353,6 +365,24 @@ ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === MessageTypes.GET_STATE) {
     sendResponse({ ...state });
+    return true;
+  }
+
+  if (message.type === MessageTypes.ORGANIZE_CHAPTER) {
+    organizeFlatChapter(message.title, message.index)
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : 'move failed' });
+      });
+    return true;
+  }
+
+  if (message.type === MessageTypes.ORGANIZE_METADATA) {
+    organizeMetadata(message.data)
+      .then((result) => sendResponse(result))
+      .catch((error) => {
+        sendResponse({ ok: false, error: error instanceof Error ? error.message : 'metadata failed' });
+      });
     return true;
   }
 
@@ -382,6 +412,23 @@ if (ext.downloads?.onChanged) {
       console.error(`[Libby Downloader] Download ${delta.id} error:`, delta.error.current);
     }
   });
+}
+
+async function organizeFlatChapter(title, index) {
+  const saver = currentNativeSaver();
+  if (!saver) return { ok: false, error: 'native messaging unavailable' };
+  const moved = await nativeCall(() => saver.moveFlat(title, index), 60000, `Move chapter ${index + 1}`);
+  log('Moved chapter into book folder', moved.filepath || '');
+  return { ok: true, path: moved.filepath };
+}
+
+async function organizeMetadata(book) {
+  if (!validateBookData(book)) return { ok: false, error: 'missing book' };
+  const saver = currentNativeSaver();
+  if (!saver) return { ok: false, error: 'native messaging unavailable' };
+  return writeMetadataOnce(book, () =>
+    saver.saveMetadata(book.metadata, book.chapters, book.metadata.title)
+  );
 }
 
 const ready = collectCapabilities();

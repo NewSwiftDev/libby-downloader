@@ -57,6 +57,8 @@ describe('assembled extension packages', () => {
     assert.equal(safari.background.type, 'module');
     assert.equal(safari.permissions.includes('downloads'), false);
     assert.ok(safari.permissions.includes('cookies'));
+    assert.ok(safari.permissions.includes('nativeMessaging'));
+    assert.equal(chrome.permissions.includes('nativeMessaging'), false);
     const extractor = safari.content_scripts.find((script) => script.js.includes('iframe-extractor.js'));
     assert.equal(extractor.world, 'MAIN');
     assert.equal(extractor.all_frames, true);
@@ -68,6 +70,9 @@ describe('assembled extension packages', () => {
     assert.ok(safari.host_permissions.some((pattern) => pattern.includes('cdn.overdrive.com')));
     assert.match(read('web/background.js'), /Native save failed; falling back/);
     assert.match(read('web/background.js'), /Save decision:/);
+    assert.match(read('web/iframe-ui.js'), /ORGANIZE_METADATA/);
+    assert.match(read('web/iframe-ui.js'), /libby-downloader-button/);
+    assert.doesNotMatch(read('web/iframe-ui.js'), /flatMetadataFilename/);
     assert.match(read('Shared (Extension)/Resources/content.js'), /Save decision:/);
     assert.match(read('Shared (Extension)/Resources/content.js'), /Page fallback:/);
     assert.match(read('Shared (Extension)/Resources/iframe-ui.js'), /function runPageFallback/);
@@ -122,6 +127,8 @@ describe('Xcode project', () => {
     assert.match(store, /libbyapp\.com/);
     assert.match(store, /cdn\.overdrive\.com/);
     assert.match(store, /willPerformHTTPRedirection/);
+    assert.match(store, /moveFlat/);
+    assert.match(store, /isSafeFlatName/);
     assert.match(store, /\.\./);
     assert.match(store, /metadata\.json/);
     const handler = read('Shared (Extension)/SafariWebExtensionHandler.swift');

@@ -7,6 +7,7 @@
 import { buildMetadataDocument } from './metadata.js';
 import {
   NATIVE_APPLICATION,
+  buildMoveFlatMessage,
   buildPingMessage,
   buildSaveFromUrlMessage,
   buildSaveTextMessage,
@@ -67,6 +68,23 @@ export function createNativeSaver(sendNative, { cookiesForUrl } = {}) {
      * @param {unknown} chapters
      * @param {string} title
      */
+    /**
+     * @param {string} title
+     * @param {number} index
+     */
+    async moveFlat(title, index) {
+      const message = buildMoveFlatMessage({ title, index });
+      let response;
+      try {
+        response = await sendNative(NATIVE_APPLICATION, message);
+      } catch (error) {
+        throw nativeChannelError(error);
+      }
+      const parsed = interpretNativeResponse(response);
+      if (!parsed.ok) throw parsed.error;
+      return { downloadId: index + 1, filepath: parsed.path, chapterIndex: index };
+    },
+
     async saveMetadata(metadata, chapters, title) {
       const message = buildSaveTextMessage({
         title,

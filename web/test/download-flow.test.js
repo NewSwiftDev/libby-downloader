@@ -192,6 +192,19 @@ describe('native saver', () => {
     assert.equal(sent[1].message.action, 'saveFromUrl');
   });
 
+  it('asks the app to move a flat download into the book folder', async () => {
+    let sent;
+    const saver = createNativeSaver(async (_application, message) => {
+      sent = message;
+      return { ok: true, path: '/Users/me/Downloads/libby-downloads/The Runaway Jury/chapter-001.mp3' };
+    });
+    const moved = await saver.moveFlat('The Runaway Jury', 0);
+    assert.equal(sent.action, 'moveFlat');
+    assert.equal(sent.flatName, 'The Runaway Jury - chapter-001.mp3');
+    assert.equal(sent.relativePath, 'The Runaway Jury/chapter-001.mp3');
+    assert.equal(moved.filepath, '/Users/me/Downloads/libby-downloads/The Runaway Jury/chapter-001.mp3');
+  });
+
   it('marks a dead native channel as a fallback and keeps the runtime error', async () => {
     const saver = createNativeSaver(async () => {
       throw new Error('The native application is not running');

@@ -113,7 +113,15 @@ function chapterHost(url) {
 
 let fallbackRun = null;
 
+function playerFrameOwnsDownload() {
+  return document.getElementById('libby-downloader-button') != null;
+}
+
 function startPageFallback(book, startIndex, reason) {
+  if (!playerFrameOwnsDownload()) {
+    console.log('[Libby Downloader] Ignoring fallback outside the player frame');
+    return;
+  }
   if (fallbackRun) {
     console.log('[Libby Downloader] Page fallback already running');
     return;
@@ -148,7 +156,16 @@ async function runBlobFallback(book, startIndex, reason) {
         signal,
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      triggerBlobDownload(await response.blob(), flatDownloadFilename(title, index));
+      const flatName = flatDownloadFilename(title, index);
+      triggerBlobDownload(await response.blob(), flatName);
+      const organized = await ext.runtime.sendMessage({
+        type: MessageTypes.ORGANIZE_CHAPTER,
+        title,
+        index,
+      });
+      if (!organized?.ok) {
+        throw new Error(organized?.error || `Could not move ${flatName} into the book folder`);
+      }
     },
     onChapter(event) {
       if (event.phase === 'start') {
@@ -197,11 +214,18 @@ async function runBlobFallback(book, startIndex, reason) {
 
   let metadataError = '';
   try {
-    const metadata = JSON.stringify({ metadata: book.metadata, chapters }, null, 2);
-    triggerBlobDownload(
-      new Blob([metadata], { type: 'application/json' }),
-      flatMetadataFilename(title)
-    );
+    const organized = await ext.runtime.sendMessage({
+      type: MessageTypes.ORGANIZE_METADATA,
+      data: book,
+    });
+    if (organized?.skipped) {
+      console.log('[Libby Downloader] Metadata already written');
+    } else if (!organized?.ok) {
+      metadataError = organized?.error || 'Could not write metadata.json';
+      console.error('[Libby Downloader] Fallback metadata failed:', metadataError);
+    } else {
+      console.log('[Libby Downloader] Wrote metadata.json once');
+    }
   } catch (error) {
     metadataError = error instanceof Error ? error.message : 'metadata failed';
     console.error('[Libby Downloader] Fallback metadata failed', error);

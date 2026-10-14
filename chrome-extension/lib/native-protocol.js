@@ -5,7 +5,12 @@
  * Copyright (c) 2026 libby-downloader contributors.
  */
 
-import { chapterRelativePath, containedRelativePath, metadataRelativePath } from './paths.js';
+import {
+  chapterRelativePath,
+  containedRelativePath,
+  flatDownloadFilename,
+  metadataRelativePath,
+} from './paths.js';
 import { isAllowedChapterURL } from './urls.js';
 
 export const NATIVE_APPLICATION = 'application.id';
@@ -14,6 +19,7 @@ export const NativeAction = {
   PING: 'ping',
   SAVE_FROM_URL: 'saveFromUrl',
   SAVE_TEXT: 'saveText',
+  MOVE_FLAT: 'moveFlat',
 };
 
 export function buildPingMessage() {
@@ -42,8 +48,38 @@ export function buildSaveFromUrlMessage({ title, index, url, cookieHeader = '' }
 }
 
 /**
- * @param {{ title: string, text: string }} input
+ * Safari's download manager saves a flat name in ~/Downloads. The app moves
+ * that file into libby-downloads/<title>/chapter-NNN.mp3.
+ * @param {{ title: string, index: number }} input
  */
+export function buildMoveFlatMessage({ title, index }) {
+  const relativePath = chapterRelativePath(title, index);
+  const flatName = flatDownloadFilename(title, index);
+  if (!containedRelativePath(relativePath) || !relativePath.endsWith('.mp3')) {
+    throw new Error('Unsafe chapter path');
+  }
+  if (!isSafeFlatDownloadName(flatName)) {
+    throw new Error('Unsafe flat download name');
+  }
+  return {
+    action: NativeAction.MOVE_FLAT,
+    flatName,
+    relativePath,
+  };
+}
+
+/**
+ * A download-attribute filename is one path segment. Slashes would let it
+ * escape ~/Downloads, and Safari ignores them anyway.
+ * @param {unknown} name
+ */
+export function isSafeFlatDownloadName(name) {
+  if (typeof name !== 'string' || !name || name.length > 240) return false;
+  if (name.includes('/') || name.includes('\\') || name.includes('..')) return false;
+  if (name.startsWith('.') || /[\r\n\u0000]/.test(name)) return false;
+  return name.endsWith('.mp3');
+}
+
 export function buildSaveTextMessage({ title, text }) {
   const relativePath = metadataRelativePath(title);
   if (!containedRelativePath(relativePath) || !relativePath.endsWith('/metadata.json')) {
