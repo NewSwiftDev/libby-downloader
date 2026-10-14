@@ -59,21 +59,48 @@ class ViewController: PlatformViewController, WKNavigationDelegate, WKScriptMess
 #endif
     }
 
-    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+    func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let command = message.body as? String else { return }
+
+        if command == "show-downloads" {
+            showDownloads()
+            return
+        }
+
 #if os(macOS)
-        if (message.body as! String != "open-preferences") {
+        if command != "open-preferences" {
             return
         }
 
         SFSafariApplication.showPreferencesForExtension(withIdentifier: extensionBundleIdentifier) { error in
             guard error == nil else {
-                // Insert code to inform the user that something went wrong.
                 return
             }
 
             DispatchQueue.main.async {
                 NSApp.terminate(self)
             }
+        }
+#endif
+    }
+
+    private func showDownloads() {
+#if os(macOS)
+        let url = DownloadLibrary.macOSDownloadsURL()
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(url)
+#elseif os(iOS)
+        if let exported = DownloadLibrary.mirrorAppGroupIntoDocuments() {
+            let controller = UIActivityViewController(activityItems: [exported], applicationActivities: nil)
+            if let popover = controller.popoverPresentationController {
+                popover.sourceView = view
+                popover.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.midY, width: 0, height: 0)
+            }
+            present(controller, animated: true)
+        } else {
+            webView.evaluateJavaScript(
+                "alert('No books in the app group yet. If the group is unavailable, Safari saved flat files in Downloads.')"
+            )
         }
 #endif
     }

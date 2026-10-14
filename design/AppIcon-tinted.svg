@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Libby Downloader, tinted</title>
+  <desc>Grayscale appearance used for the iOS tinted icon.</desc>
+  <defs>
+    <linearGradient id="bg" x1="140" y1="0" x2="900" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A0A0A6"/>
+      <stop offset="0.5" stop-color="#6E6E74"/>
+      <stop offset="1" stop-color="#3A3A40"/>
+    </linearGradient>
+    <linearGradient id="pageLeft" x1="180" y1="600" x2="490" y2="940" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E6E6E8"/>
+    </linearGradient>
+    <linearGradient id="pageRight" x1="540" y1="600" x2="860" y2="940" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#CFCFD2"/>
+      <stop offset="1" stop-color="#F4F4F5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect x="486" y="690" width="52" height="230" rx="18" fill="#B7B7BB"/>
+  <rect x="162" y="640" width="336" height="250" rx="44" fill="url(#pageLeft)" transform="rotate(-11 330 765)"/>
+  <rect x="526" y="640" width="336" height="250" rx="44" fill="url(#pageRight)" transform="rotate(11 694 765)"/>
+  <path fill="#4A4A4E" d="M430 168h164v188h140L512 548 290 356h140z"/>
+  <path fill="#FFFFFF" d="M430 156h164v188h140L512 536 290 344h140z"/>
+</svg>

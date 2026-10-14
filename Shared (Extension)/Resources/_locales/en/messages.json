@@ -1,10 +1,10 @@
 {
-    "extension_name": {
-        "message": "libby-downloader",
-        "description": "The display name for the extension."
-    },
-    "extension_description": {
-        "message": "This is libby-downloader. You should tell us what your extension does here.",
-        "description": "Description of what the extension does."
-    }
+  "extension_name": {
+    "message": "Libby Downloader",
+    "description": "The display name for the extension."
+  },
+  "extension_description": {
+    "message": "One-click audiobook downloads from Libby. Safari saves chapters through the containing app.",
+    "description": "Description of what the extension does."
+  }
 }

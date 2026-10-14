@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Libby Downloader",
+  "version": "1.2.0",
+  "description": "One-click audiobook downloads from Libby.",
+  "default_locale": "en",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "96": "icons/icon96.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["downloads", "cookies"],
+  "host_permissions": ["*://*.libbyapp.com/*", "*://*.listen.libbyapp.com/*"],
+  "action": {
+    "default_title": "Libby Downloader",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "96": "icons/icon96.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.libbyapp.com/open/loan/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.listen.libbyapp.com/*"],
+      "js": ["iframe-extractor.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": ["*://*.listen.libbyapp.com/*"],
+      "js": ["iframe-ui.js"],
+      "css": ["styles/content-styles.css"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

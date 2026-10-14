@@ -22,3 +22,7 @@ function openPreferences() {
 }
 
 document.querySelector("button.open-preferences").addEventListener("click", openPreferences);
+
+document.querySelector("button.show-downloads").addEventListener("click", () => {
+    webkit.messageHandlers.controller.postMessage("show-downloads");
+});

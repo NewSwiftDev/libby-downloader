@@ -1,11 +1,20 @@
 <!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="popup.css">
-    <script type="module" src="popup.js"></script>
-</head>
-<body>
-    <strong>Hello World!</strong>
-</body>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Libby Downloader</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <h1>Libby Downloader</h1>
+    <p>Open a borrowed audiobook and use the download button in the player.</p>
+    <p id="status">Checking where files will be saved…</p>
+    <ul>
+      <li>Chrome: <code>~/Downloads/libby-downloads/&lt;title&gt;/</code></li>
+      <li>Safari on Mac: the same folder, written by this app</li>
+      <li>Safari on iPhone: the app group, or flat files in Downloads</li>
+    </ul>
+    <script src="popup.js"></script>
+  </body>
 </html>

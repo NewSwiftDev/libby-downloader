@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Libby Downloader, dark</title>
+  <desc>Dark appearance of the open book and download arrow.</desc>
+  <defs>
+    <linearGradient id="bg" x1="140" y1="0" x2="900" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3C4A96"/>
+      <stop offset="0.5" stop-color="#241C62"/>
+      <stop offset="1" stop-color="#100C28"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="512" cy="420" r="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="pageLeft" x1="180" y1="600" x2="490" y2="940" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7F4EF"/>
+      <stop offset="1" stop-color="#E4D9C8"/>
+    </linearGradient>
+    <linearGradient id="pageRight" x1="540" y1="600" x2="860" y2="940" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#D5C6B0"/>
+      <stop offset="1" stop-color="#F3EEE6"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+  <rect x="486" y="690" width="52" height="230" rx="18" fill="#CDB89A"/>
+  <rect x="162" y="640" width="336" height="250" rx="44" fill="url(#pageLeft)" transform="rotate(-11 330 765)"/>
+  <rect x="526" y="640" width="336" height="250" rx="44" fill="url(#pageRight)" transform="rotate(11 694 765)"/>
+  <path fill="#C98A12" d="M430 168h164v188h140L512 548 290 356h140z"/>
+  <path fill="#FFC53D" d="M430 156h164v188h140L512 536 290 344h140z"/>
+</svg>
