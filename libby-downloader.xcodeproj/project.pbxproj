@@ -1,0 +1,897 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 110;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		9143EC32307FCB05001A9C5E /* libby-downloader Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9143EC31307FCB05001A9C5E /* libby-downloader Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		9143EC3C307FCB05001A9C5E /* libby-downloader Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9143EC3B307FCB05001A9C5E /* libby-downloader Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9143EC33307FCB05001A9C5E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9143EBF8307FCB04001A9C5E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9143EC30307FCB05001A9C5E;
+			remoteInfo = "libby-downloader Extension (iOS)";
+		};
+		9143EC3D307FCB05001A9C5E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9143EBF8307FCB04001A9C5E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9143EC3A307FCB05001A9C5E;
+			remoteInfo = "libby-downloader Extension (macOS)";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9143EC64307FCB05001A9C5E /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				9143EC32307FCB05001A9C5E /* libby-downloader Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+		9143EC6E307FCB05001A9C5E /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			dstPath = "";
+			dstSubfolder = PlugIns;
+			files = (
+				9143EC3C307FCB05001A9C5E /* libby-downloader Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		9143EC14307FCB05001A9C5E /* libby-downloader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "libby-downloader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9143EC26307FCB05001A9C5E /* libby-downloader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "libby-downloader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9143EC31307FCB05001A9C5E /* libby-downloader Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "libby-downloader Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9143EC3B307FCB05001A9C5E /* libby-downloader Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "libby-downloader Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9143EC5F307FCB05001A9C5E /* Exceptions for "Shared (App)" folder in "libby-downloader (iOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"/Localized: Resources/Main.html",
+				Assets.xcassets,
+				Resources/Icon.png,
+				Resources/Script.js,
+				Resources/Style.css,
+				ViewController.swift,
+			);
+			target = 9143EC13307FCB05001A9C5E /* libby-downloader (iOS) */;
+		};
+		9143EC63307FCB05001A9C5E /* Exceptions for "iOS (Extension)" folder in "libby-downloader Extension (iOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9143EC30307FCB05001A9C5E /* libby-downloader Extension (iOS) */;
+		};
+		9143EC68307FCB05001A9C5E /* Exceptions for "iOS (App)" folder in "libby-downloader (iOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9143EC13307FCB05001A9C5E /* libby-downloader (iOS) */;
+		};
+		9143EC69307FCB05001A9C5E /* Exceptions for "Shared (App)" folder in "libby-downloader (macOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"/Localized: Resources/Main.html",
+				Assets.xcassets,
+				Resources/Icon.png,
+				Resources/Script.js,
+				Resources/Style.css,
+				ViewController.swift,
+			);
+			target = 9143EC25307FCB05001A9C5E /* libby-downloader (macOS) */;
+		};
+		9143EC6D307FCB05001A9C5E /* Exceptions for "macOS (Extension)" folder in "libby-downloader Extension (macOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9143EC3A307FCB05001A9C5E /* libby-downloader Extension (macOS) */;
+		};
+		9143EC72307FCB05001A9C5E /* Exceptions for "Shared (Extension)" folder in "libby-downloader Extension (iOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/_locales,
+				Resources/background.js,
+				Resources/content.js,
+				Resources/images,
+				Resources/manifest.json,
+				Resources/popup.css,
+				Resources/popup.html,
+				Resources/popup.js,
+				SafariWebExtensionHandler.swift,
+			);
+			target = 9143EC30307FCB05001A9C5E /* libby-downloader Extension (iOS) */;
+		};
+		9143EC73307FCB05001A9C5E /* Exceptions for "Shared (Extension)" folder in "libby-downloader Extension (macOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/_locales,
+				Resources/background.js,
+				Resources/content.js,
+				Resources/images,
+				Resources/manifest.json,
+				Resources/popup.css,
+				Resources/popup.html,
+				Resources/popup.js,
+				SafariWebExtensionHandler.swift,
+			);
+			target = 9143EC3A307FCB05001A9C5E /* libby-downloader Extension (macOS) */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		9143EBFC307FCB05001A9C5E /* Shared (App) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9143EC5F307FCB05001A9C5E /* Exceptions for "Shared (App)" folder in "libby-downloader (iOS)" target */,
+				9143EC69307FCB05001A9C5E /* Exceptions for "Shared (App)" folder in "libby-downloader (macOS)" target */,
+			);
+			path = "Shared (App)";
+			sourceTree = "<group>";
+		};
+		9143EC05307FCB05001A9C5E /* Shared (Extension) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9143EC72307FCB05001A9C5E /* Exceptions for "Shared (Extension)" folder in "libby-downloader Extension (iOS)" target */,
+				9143EC73307FCB05001A9C5E /* Exceptions for "Shared (Extension)" folder in "libby-downloader Extension (macOS)" target */,
+			);
+			explicitFolders = (
+				Resources/_locales,
+				Resources/images,
+			);
+			path = "Shared (Extension)";
+			sourceTree = "<group>";
+		};
+		9143EC16307FCB05001A9C5E /* iOS (App) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9143EC68307FCB05001A9C5E /* Exceptions for "iOS (App)" folder in "libby-downloader (iOS)" target */,
+			);
+			path = "iOS (App)";
+			sourceTree = "<group>";
+		};
+		9143EC27307FCB05001A9C5E /* macOS (App) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "macOS (App)";
+			sourceTree = "<group>";
+		};
+		9143EC35307FCB05001A9C5E /* iOS (Extension) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9143EC63307FCB05001A9C5E /* Exceptions for "iOS (Extension)" folder in "libby-downloader Extension (iOS)" target */,
+			);
+			path = "iOS (Extension)";
+			sourceTree = "<group>";
+		};
+		9143EC3F307FCB05001A9C5E /* macOS (Extension) */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9143EC6D307FCB05001A9C5E /* Exceptions for "macOS (Extension)" folder in "libby-downloader Extension (macOS)" target */,
+			);
+			path = "macOS (Extension)";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9143EC11307FCB05001A9C5E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		9143EC23307FCB05001A9C5E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		9143EC2E307FCB05001A9C5E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+		9143EC38307FCB05001A9C5E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+			);
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		9143EBF7307FCB04001A9C5E = {
+			isa = PBXGroup;
+			children = (
+				9143EBFC307FCB05001A9C5E /* Shared (App) */,
+				9143EC05307FCB05001A9C5E /* Shared (Extension) */,
+				9143EC16307FCB05001A9C5E /* iOS (App) */,
+				9143EC27307FCB05001A9C5E /* macOS (App) */,
+				9143EC35307FCB05001A9C5E /* iOS (Extension) */,
+				9143EC3F307FCB05001A9C5E /* macOS (Extension) */,
+				9143EC15307FCB05001A9C5E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		9143EC15307FCB05001A9C5E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				9143EC14307FCB05001A9C5E /* libby-downloader.app */,
+				9143EC26307FCB05001A9C5E /* libby-downloader.app */,
+				9143EC31307FCB05001A9C5E /* libby-downloader Extension.appex */,
+				9143EC3B307FCB05001A9C5E /* libby-downloader Extension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		9143EC13307FCB05001A9C5E /* libby-downloader (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9143EC65307FCB05001A9C5E /* Build configuration list for PBXNativeTarget "libby-downloader (iOS)" */;
+			buildPhases = (
+				9143EC10307FCB05001A9C5E /* Sources */,
+				9143EC11307FCB05001A9C5E /* Frameworks */,
+				9143EC12307FCB05001A9C5E /* Resources */,
+				9143EC64307FCB05001A9C5E /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9143EC34307FCB05001A9C5E /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				9143EC16307FCB05001A9C5E /* iOS (App) */,
+			);
+			name = "libby-downloader (iOS)";
+			productName = "libby-downloader (iOS)";
+			productReference = 9143EC14307FCB05001A9C5E /* libby-downloader.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9143EC25307FCB05001A9C5E /* libby-downloader (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9143EC6F307FCB05001A9C5E /* Build configuration list for PBXNativeTarget "libby-downloader (macOS)" */;
+			buildPhases = (
+				9143EC22307FCB05001A9C5E /* Sources */,
+				9143EC23307FCB05001A9C5E /* Frameworks */,
+				9143EC24307FCB05001A9C5E /* Resources */,
+				9143EC6E307FCB05001A9C5E /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				9143EC3E307FCB05001A9C5E /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				9143EC27307FCB05001A9C5E /* macOS (App) */,
+			);
+			name = "libby-downloader (macOS)";
+			productName = "libby-downloader (macOS)";
+			productReference = 9143EC26307FCB05001A9C5E /* libby-downloader.app */;
+			productType = "com.apple.product-type.application";
+		};
+		9143EC30307FCB05001A9C5E /* libby-downloader Extension (iOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9143EC60307FCB05001A9C5E /* Build configuration list for PBXNativeTarget "libby-downloader Extension (iOS)" */;
+			buildPhases = (
+				9143EC2D307FCB05001A9C5E /* Sources */,
+				9143EC2E307FCB05001A9C5E /* Frameworks */,
+				9143EC2F307FCB05001A9C5E /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				9143EC35307FCB05001A9C5E /* iOS (Extension) */,
+			);
+			name = "libby-downloader Extension (iOS)";
+			productName = "libby-downloader Extension (iOS)";
+			productReference = 9143EC31307FCB05001A9C5E /* libby-downloader Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		9143EC3A307FCB05001A9C5E /* libby-downloader Extension (macOS) */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9143EC6A307FCB05001A9C5E /* Build configuration list for PBXNativeTarget "libby-downloader Extension (macOS)" */;
+			buildPhases = (
+				9143EC37307FCB05001A9C5E /* Sources */,
+				9143EC38307FCB05001A9C5E /* Frameworks */,
+				9143EC39307FCB05001A9C5E /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				9143EC3F307FCB05001A9C5E /* macOS (Extension) */,
+			);
+			name = "libby-downloader Extension (macOS)";
+			productName = "libby-downloader Extension (macOS)";
+			productReference = 9143EC3B307FCB05001A9C5E /* libby-downloader Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9143EBF8307FCB04001A9C5E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2700;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					9143EC13307FCB05001A9C5E = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					9143EC25307FCB05001A9C5E = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					9143EC30307FCB05001A9C5E = {
+						CreatedOnToolsVersion = 27.0;
+					};
+					9143EC3A307FCB05001A9C5E = {
+						CreatedOnToolsVersion = 27.0;
+					};
+				};
+			};
+			buildConfigurationList = 9143EBFB307FCB04001A9C5E /* Build configuration list for PBXProject "libby-downloader" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 9143EBF7307FCB04001A9C5E;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 9143EC15307FCB05001A9C5E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				9143EC13307FCB05001A9C5E /* libby-downloader (iOS) */,
+				9143EC25307FCB05001A9C5E /* libby-downloader (macOS) */,
+				9143EC30307FCB05001A9C5E /* libby-downloader Extension (iOS) */,
+				9143EC3A307FCB05001A9C5E /* libby-downloader Extension (macOS) */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		9143EC12307FCB05001A9C5E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		9143EC24307FCB05001A9C5E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		9143EC2F307FCB05001A9C5E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		9143EC39307FCB05001A9C5E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9143EC10307FCB05001A9C5E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		9143EC22307FCB05001A9C5E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		9143EC2D307FCB05001A9C5E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+		9143EC37307FCB05001A9C5E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9143EC34307FCB05001A9C5E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9143EC30307FCB05001A9C5E /* libby-downloader Extension (iOS) */;
+			targetProxy = 9143EC33307FCB05001A9C5E /* PBXContainerItemProxy */;
+		};
+		9143EC3E307FCB05001A9C5E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9143EC3A307FCB05001A9C5E /* libby-downloader Extension (macOS) */;
+			targetProxy = 9143EC3D307FCB05001A9C5E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		9143EC61307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader Extension (iOS)" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.renewalsoftware.libby-downloader.Extension";
+				PRODUCT_NAME = "libby-downloader Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9143EC62307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader Extension (iOS)" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.renewalsoftware.libby-downloader.Extension";
+				PRODUCT_NAME = "libby-downloader Extension";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		9143EC66307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader (iOS)" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.renewalsoftware.libby-downloader";
+				PRODUCT_NAME = "libby-downloader";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9143EC67307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader (iOS)" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "iOS (App)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UIMainStoryboardFile = Main;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.renewalsoftware.libby-downloader";
+				PRODUCT_NAME = "libby-downloader";
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		9143EC6B307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader Extension (macOS)" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.renewalsoftware.libby-downloader.Extension";
+				PRODUCT_NAME = "libby-downloader Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9143EC6C307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader Extension (macOS)" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.renewalsoftware.libby-downloader.Extension";
+				PRODUCT_NAME = "libby-downloader Extension";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		9143EC70307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader (macOS)" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.renewalsoftware.libby-downloader";
+				PRODUCT_NAME = "libby-downloader";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		9143EC71307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader (macOS)" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
+				INFOPLIST_KEY_NSMainStoryboardFile = Main;
+				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.0;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+					"-framework",
+					WebKit,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.renewalsoftware.libby-downloader";
+				PRODUCT_NAME = "libby-downloader";
+				REGISTER_APP_GROUPS = YES;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		9143EC74307FCB05001A9C5E /* Debug configuration for PBXProject "libby-downloader" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		9143EC75307FCB05001A9C5E /* Release configuration for PBXProject "libby-downloader" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 8DJHS9AWYU;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		9143EBFB307FCB04001A9C5E /* Build configuration list for PBXProject "libby-downloader" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9143EC74307FCB05001A9C5E /* Debug configuration for PBXProject "libby-downloader" */,
+				9143EC75307FCB05001A9C5E /* Release configuration for PBXProject "libby-downloader" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		9143EC60307FCB05001A9C5E /* Build configuration list for PBXNativeTarget "libby-downloader Extension (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9143EC61307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader Extension (iOS)" */,
+				9143EC62307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader Extension (iOS)" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		9143EC65307FCB05001A9C5E /* Build configuration list for PBXNativeTarget "libby-downloader (iOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9143EC66307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader (iOS)" */,
+				9143EC67307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader (iOS)" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		9143EC6A307FCB05001A9C5E /* Build configuration list for PBXNativeTarget "libby-downloader Extension (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9143EC6B307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader Extension (macOS)" */,
+				9143EC6C307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader Extension (macOS)" */,
+			);
+			defaultConfigurationName = Release;
+		};
+		9143EC6F307FCB05001A9C5E /* Build configuration list for PBXNativeTarget "libby-downloader (macOS)" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9143EC70307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader (macOS)" */,
+				9143EC71307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader (macOS)" */,
+			);
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9143EBF8307FCB04001A9C5E /* Project object */;
+	validationLevel = 1;
+}
