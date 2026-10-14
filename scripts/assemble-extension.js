@@ -81,6 +81,7 @@ function assembleInto(destination, manifestName) {
   );
   copyFile(resolve(root, `web/manifest.${manifestName}.json`), resolve(destination, 'manifest.json'));
   cpSync(resolve(root, 'web/icons'), resolve(destination, 'icons'), { recursive: true });
+  cpSync(resolve(root, 'web/images'), resolve(destination, 'images'), { recursive: true });
   cpSync(resolve(root, 'web/_locales'), resolve(destination, '_locales'), { recursive: true });
   cpSync(resolve(root, 'web/lib'), resolve(destination, 'lib'), { recursive: true });
 }

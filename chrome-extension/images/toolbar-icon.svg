@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="60 86 888 888">
+  <title>Libby Downloader toolbar</title>
+  <rect x="486" y="690" width="52" height="230" rx="18" fill="#000"/>
+  <rect x="162" y="640" width="336" height="250" rx="44" fill="#000" transform="rotate(-11 330 765)"/>
+  <rect x="526" y="640" width="336" height="250" rx="44" fill="#000" transform="rotate(11 694 765)"/>
+  <path fill="#000" d="M430 156h164v188h140L512 536 290 344h140z"/>
+</svg>
