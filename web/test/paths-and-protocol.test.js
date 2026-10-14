@@ -22,7 +22,13 @@ import {
   metadataRelativePath,
   sanitizeFilename,
 } from '../lib/paths.js';
-import { selectSaveStrategy, storagePlan, supportsMainWorldCapture } from '../lib/platform.js';
+import {
+  describeSaveStrategy,
+  detectBrowserName,
+  selectSaveStrategy,
+  storagePlan,
+  supportsMainWorldCapture,
+} from '../lib/platform.js';
 import { chapterFetchCredentials, formatCookieHeader, isAllowedChapterHost, isAllowedChapterURL } from '../lib/urls.js';
 import { validateBookData, validateOrigin } from '../lib/validators.js';
 
@@ -110,6 +116,33 @@ describe('urls and platform', () => {
     );
     assert.equal(selectSaveStrategy({ sendNativeMessage() {} }), 'native');
     assert.equal(selectSaveStrategy({}), 'blob-fallback');
+  });
+
+  it('logs why Safari skips downloads.download and why native messaging is missing', () => {
+    assert.equal(detectBrowserName('Mozilla/5.0 Version/18.6 Safari/605.1.15'), 'safari');
+    assert.equal(
+      detectBrowserName('Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 (KHTML, like Gecko)'),
+      'safari'
+    );
+    assert.equal(
+      detectBrowserName('Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36'),
+      'chrome'
+    );
+    const safariNative = describeSaveStrategy({
+      browserName: 'safari',
+      downloadsDownload() {},
+      sendNativeMessage() {},
+    });
+    assert.equal(safariNative.strategy, 'native');
+    assert.match(safariNative.reason, /sendNativeMessage/);
+    assert.match(safariNative.reason, /ignored/);
+    const missing = describeSaveStrategy({ browserName: 'safari' });
+    assert.equal(missing.strategy, 'blob-fallback');
+    assert.match(missing.reason, /runtime\.sendNativeMessage is undefined/);
+    assert.match(missing.reason, /downloads\.download is undefined/);
+    const chromeOnly = describeSaveStrategy({ downloadsDownload() {} });
+    assert.equal(chromeOnly.strategy, 'chrome-downloads');
+    assert.match(chromeOnly.reason, /downloads\.download is a function/);
   });
 
   it('requires Safari 18 for MAIN-world BIF capture', () => {

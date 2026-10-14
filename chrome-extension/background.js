@@ -10,7 +10,8 @@ import { createChromeSaver } from './lib/chrome-downloads.js';
 import { downloadAllChapters } from './lib/download-orchestrator.js';
 import { MessageTypes } from './lib/messages.js';
 import { createNativeSaver } from './lib/native-saver.js';
-import { selectSaveStrategy } from './lib/platform.js';
+import { withTimeout } from './lib/page-fallback.js';
+import { describeSaveStrategy, detectBrowserName } from './lib/platform.js';
 import { isAllowedChapterURL } from './lib/urls.js';
 import { validateBookData } from './lib/validators.js';
 
@@ -42,30 +43,65 @@ function requireBook(data) {
 }
 
 async function notify(tabId, message) {
-  if (tabId == null || !ext.tabs?.sendMessage) return;
+  if (tabId == null || !ext.tabs?.sendMessage) {
+    log('Cannot message the tab', message?.type, 'tabs.sendMessage missing');
+    return;
+  }
   try {
     await ext.tabs.sendMessage(tabId, message);
-  } catch {
-    // The tab can close while chapters are still saving.
+  } catch (error) {
+    console.error(
+      '[Libby Downloader] Tab message failed:',
+      message?.type,
+      error instanceof Error ? error.message : error
+    );
   }
 }
 
-function strategyForRuntime() {
-  return selectSaveStrategy({
-    downloadsDownload: ext.downloads?.download,
-    sendNativeMessage: ext.runtime?.sendNativeMessage,
+function collectCapabilities() {
+  const apis = [
+    ['browser', globalThis.browser],
+    ['chrome', globalThis.chrome],
+  ];
+  let nativeRuntime;
+  let sendNativeFrom = 'missing';
+  let downloadsDownload;
+  let downloadsFrom = 'missing';
+  for (const [name, api] of apis) {
+    if (!api) continue;
+    if (!nativeRuntime && typeof api.runtime?.sendNativeMessage === 'function') {
+      nativeRuntime = api.runtime;
+      sendNativeFrom = name;
+    }
+    if (!downloadsDownload && typeof api.downloads?.download === 'function') {
+      downloadsDownload = api.downloads.download.bind(api.downloads);
+      downloadsFrom = name;
+    }
+  }
+  const browserName = detectBrowserName(globalThis.navigator?.userAgent || '');
+  const decision = describeSaveStrategy({
+    downloadsDownload,
+    sendNativeMessage: nativeRuntime?.sendNativeMessage,
+    browserName,
   });
+  return {
+    ...decision,
+    nativeRuntime,
+    downloadsDownload,
+    sendNativeFrom,
+    downloadsFrom,
+    browserName,
+  };
 }
 
-function nativeErrorText(error) {
-  const runtimeMessage = ext.runtime?.lastError?.message;
+function nativeErrorText(error, runtime) {
+  const runtimeMessage = runtime?.lastError?.message;
   const thrown = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
   const parts = [runtimeMessage, thrown].filter((part) => part && part.length > 0);
   return [...new Set(parts)].join(': ') || 'native-channel';
 }
 
-function sendNativeMessage(application, message) {
-  const runtime = ext.runtime;
+function invokeNative(runtime, application, message) {
   if (typeof runtime?.sendNativeMessage !== 'function') {
     return Promise.reject(new Error('sendNativeMessage is not available'));
   }
@@ -109,7 +145,7 @@ function sendNativeMessage(application, message) {
         result = runtime.sendNativeMessage(application, message);
         callbackDone = true;
       } catch (second) {
-        reject(new Error(nativeErrorText(second || error)));
+        reject(new Error(nativeErrorText(second || error, runtime)));
         return;
       }
     }
@@ -126,7 +162,7 @@ function sendNativeMessage(application, message) {
         },
         (error) => {
           promiseDone = true;
-          promiseError = new Error(nativeErrorText(error));
+          promiseError = new Error(nativeErrorText(error, runtime));
           failIfExhausted();
         }
       );
@@ -172,30 +208,52 @@ async function requestFallback(tabId, book, startIndex, reason, source) {
     startIndex,
     reason: text,
   });
+  return text;
+}
+
+async function nativeCall(work, timeoutMs, label) {
+  try {
+    return await withTimeout(work, timeoutMs, label);
+  } catch (error) {
+    const wrapped = /** @type {Error & { fallback?: boolean }} */ (
+      new Error(error instanceof Error && error.message ? error.message : label)
+    );
+    wrapped.fallback = true;
+    throw wrapped;
+  }
+}
+
+function decisionResult(selected, strategy, reason, extra = {}) {
+  log(`Save decision: ${selected} → ${strategy}. ${reason}`);
+  return { success: true, selected, strategy, reason, ...extra };
 }
 
 async function handleStartDownload(bookData, tabId) {
   const book = requireBook(bookData);
-  const strategy = strategyForRuntime();
+  const decision = collectCapabilities();
   state.phase = 'downloading';
   state.title = book.metadata.title;
   state.completed = 0;
   state.failed = 0;
   state.total = book.chapters.length;
-  state.strategy = strategy;
-  state.detail = '';
-  log('Download starting', strategy, `${book.chapters.length} chapters`);
+  state.strategy = decision.strategy;
+  state.detail = decision.reason;
+  log(
+    `Save decision: ${decision.strategy}. ${decision.reason}`,
+    `(browser=${decision.browserName}, native=${decision.sendNativeFrom}, downloads=${decision.downloadsFrom}, chapters=${book.chapters.length})`
+  );
 
   const onProgress = (completed, total) => {
     state.completed = completed;
     state.total = total;
+    log(`Progress ${completed} of ${total}`);
     notify(tabId, {
       type: MessageTypes.DOWNLOAD_PROGRESS,
       progress: { completed, total },
     });
   };
 
-  if (strategy === 'chrome-downloads') {
+  if (decision.strategy === 'chrome-downloads') {
     const saver = createChromeSaver(ext.downloads);
     const result = await downloadAllChapters({
       chapters: book.chapters,
@@ -209,22 +267,48 @@ async function handleStartDownload(bookData, tabId) {
       console.error('[Libby Downloader] Failed to save metadata file:', error);
     }
     await finish(tabId, result);
-    return { success: true, strategy, result };
+    return decisionResult('chrome-downloads', 'chrome-downloads', decision.reason, { result });
   }
 
-  if (strategy === 'native') {
-    const saver = createNativeSaver(sendNativeMessage, { cookiesForUrl: cookieList });
-    const ping = await saver.ping();
+  if (decision.strategy === 'native') {
+    const saver = createNativeSaver(
+      (application, message) => invokeNative(decision.nativeRuntime, application, message),
+      { cookiesForUrl: cookieList }
+    );
+    let ping;
+    try {
+      ping = await nativeCall(() => saver.ping(), 15000, 'Native ping');
+    } catch (error) {
+      const reason = await requestFallback(
+        tabId,
+        book,
+        0,
+        `${decision.reason}; ${error instanceof Error ? error.message : 'Native ping failed'}`,
+        'ping'
+      );
+      return decisionResult('native', 'blob-fallback', reason, { fallback: true, startIndex: 0 });
+    }
     if (!ping.ok) {
-      await requestFallback(tabId, book, 0, ping.error.message, 'ping');
-      return { success: true, strategy: 'blob-fallback', fallback: true };
+      const reason = await requestFallback(
+        tabId,
+        book,
+        0,
+        `${decision.reason}; ${ping.error.message}`,
+        'ping'
+      );
+      return decisionResult('native', 'blob-fallback', reason, { fallback: true, startIndex: 0 });
     }
     log('Native ping ok', ping.platform || '', ping.path || '');
 
     const result = await downloadAllChapters({
       chapters: book.chapters,
       title: book.metadata.title,
-      saveChapter: (chapter, title, index) => saver.saveChapter(chapter, title, index),
+      saveChapter: (chapter, title, index) =>
+        nativeCall(
+          () => saver.saveChapter(chapter, title, index),
+          180000,
+          `Native chapter ${index + 1}`
+        ),
       onProgress,
     });
 
@@ -236,9 +320,19 @@ async function handleStartDownload(bookData, tabId) {
           console.error('[Libby Downloader] Failed to save metadata file:', error);
         }
       }
-      const reason = result.errors[result.errors.length - 1]?.error || 'native-save-failed';
-      await requestFallback(tabId, book, result.completed, reason, 'chapter');
-      return { success: true, strategy: 'blob-fallback', fallback: true, result };
+      const chapterError = result.errors[result.errors.length - 1]?.error || 'native-save-failed';
+      const reason = await requestFallback(
+        tabId,
+        book,
+        result.completed,
+        `${decision.reason}; ${chapterError}`,
+        'chapter'
+      );
+      return decisionResult('native', 'blob-fallback', reason, {
+        fallback: true,
+        startIndex: result.completed,
+        result,
+      });
     }
 
     try {
@@ -247,17 +341,11 @@ async function handleStartDownload(bookData, tabId) {
       console.error('[Libby Downloader] Failed to save metadata file:', error);
     }
     await finish(tabId, result);
-    return { success: true, strategy, result };
+    return decisionResult('native', 'native', `${decision.reason}; ping ok`, { result });
   }
 
-  await requestFallback(
-    tabId,
-    book,
-    0,
-    'sendNativeMessage is not a function and downloads.download is missing',
-    'no-api'
-  );
-  return { success: true, strategy: 'blob-fallback', fallback: true };
+  const reason = await requestFallback(tabId, book, 0, decision.reason, 'no-api');
+  return decisionResult('blob-fallback', 'blob-fallback', reason, { fallback: true, startIndex: 0 });
 }
 
 ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -296,4 +384,10 @@ if (ext.downloads?.onChanged) {
   });
 }
 
-log('Background ready', strategyForRuntime());
+const ready = collectCapabilities();
+log(
+  'Background ready',
+  ready.strategy,
+  ready.reason,
+  `(browser=${ready.browserName}, native=${ready.sendNativeFrom}, downloads=${ready.downloadsFrom})`
+);

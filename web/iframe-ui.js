@@ -9,6 +9,7 @@
 /*__INCLUDE web/lib/messages.js__*/
 /*__INCLUDE web/lib/paths.js__*/
 /*__INCLUDE web/lib/urls.js__*/
+/*__INCLUDE web/lib/page-fallback.js__*/
 
 const ext = globalThis.browser ?? globalThis.chrome;
 
@@ -68,7 +69,7 @@ function updateProgressOverlay(completed, total, message) {
   if (progressText) progressText.textContent = message;
 }
 
-function showCompletionMessage(failedChapters) {
+function showCompletionMessage(failedChapters, detail) {
   if (!progressOverlay) return;
   const progressText = progressOverlay.querySelector('.libby-progress-text');
   if (!progressText) return;
@@ -77,7 +78,8 @@ function showCompletionMessage(failedChapters) {
     progressText.textContent = 'Download complete!';
     return;
   }
-  progressText.textContent = `Download complete with ${failedChapters} errors`;
+  const suffix = detail ? ` Last: ${detail}` : '';
+  progressText.textContent = `Download failed: ${failedChapters} errors.${suffix}`.slice(0, 180);
 }
 
 function removeProgressOverlay() {
@@ -101,23 +103,41 @@ function triggerBlobDownload(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+function chapterHost(url) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return 'invalid-url';
+  }
+}
+
+let fallbackRun = null;
+
+function startPageFallback(book, startIndex, reason) {
+  if (fallbackRun) {
+    console.log('[Libby Downloader] Page fallback already running');
+    return;
+  }
+  fallbackRun = runBlobFallback(book, startIndex, reason).finally(() => {
+    fallbackRun = null;
+  });
+}
+
 async function runBlobFallback(book, startIndex, reason) {
   const chapters = Array.isArray(book?.chapters) ? book.chapters : [];
   const title = book?.metadata?.title || 'Untitled';
-  let saved = 0;
-  let failed = 0;
-  console.error(
-    '[Libby Downloader] Page download fallback:',
-    reason || 'no reason provided'
-  );
+  const begin = Number.isInteger(startIndex) ? startIndex : 0;
+  console.error('[Libby Downloader] Page download fallback:', reason || 'no reason provided');
   createProgressOverlay();
-  const summary = reason ? `Native save failed: ${reason}` : 'Saving through Safari downloads...';
-  updateProgressOverlay(startIndex, chapters.length, summary.slice(0, 180));
+  const summary = reason ? `Page fallback: ${reason}` : 'Saving through Safari downloads...';
+  updateProgressOverlay(begin, chapters.length, summary.slice(0, 180));
 
-  for (let index = startIndex; index < chapters.length; index++) {
-    const chapter = chapters[index];
-    try {
-      if (!isAllowedChapterURL(chapter.url)) {
+  const result = await runPageFallback({
+    chapters,
+    startIndex: begin,
+    timeoutMs: 120000,
+    async fetchChapter(chapter, index, signal) {
+      if (!isAllowedChapterURL(chapter?.url)) {
         throw new Error('Refusing chapter URL outside Libby');
       }
       // credentials must stay 'omit'. listen.libbyapp.com redirects to
@@ -125,30 +145,57 @@ async function runBlobFallback(book, startIndex, reason) {
       const response = await fetch(chapter.url, {
         credentials: chapterFetchCredentials(),
         redirect: 'follow',
+        signal,
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       triggerBlobDownload(await response.blob(), flatDownloadFilename(title, index));
-      saved += 1;
-      const completed = startIndex + saved;
+    },
+    onChapter(event) {
+      if (event.phase === 'start') {
+        console.log(
+          '[Libby Downloader] Fallback chapter',
+          event.index + 1,
+          'of',
+          event.total,
+          chapterHost(event.url)
+        );
+        updateProgressOverlay(
+          event.index,
+          event.total,
+          `Fetching chapter ${event.index + 1} of ${event.total}`
+        );
+        return;
+      }
+      if (event.phase === 'saved') {
+        updateProgressOverlay(
+          event.completed,
+          event.total,
+          `Saving ${event.completed} of ${event.total} (Safari downloads)`
+        );
+        window.parent.postMessage(
+          {
+            type: MessageTypes.FALLBACK_PROGRESS,
+            progress: { completed: event.completed, total: event.total },
+          },
+          '*'
+        );
+        return;
+      }
+      console.error(
+        '[Libby Downloader] Fallback chapter',
+        event.index + 1,
+        'failed:',
+        event.message
+      );
       updateProgressOverlay(
-        completed,
-        chapters.length,
-        `Saving ${completed} of ${chapters.length} (Safari downloads)`
+        event.index,
+        event.total,
+        `Chapter ${event.index + 1} failed: ${event.message}`.slice(0, 180)
       );
-      window.parent.postMessage(
-        {
-          type: MessageTypes.FALLBACK_PROGRESS,
-          progress: { completed, total: chapters.length },
-        },
-        '*'
-      );
-      await sleep(500);
-    } catch (error) {
-      failed += 1;
-      console.error('[Libby Downloader] Fallback chapter failed', error);
-    }
-  }
+    },
+  });
 
+  let metadataError = '';
   try {
     const metadata = JSON.stringify({ metadata: book.metadata, chapters }, null, 2);
     triggerBlobDownload(
@@ -156,14 +203,21 @@ async function runBlobFallback(book, startIndex, reason) {
       flatMetadataFilename(title)
     );
   } catch (error) {
+    metadataError = error instanceof Error ? error.message : 'metadata failed';
     console.error('[Libby Downloader] Fallback metadata failed', error);
   }
 
-  showCompletionMessage(failed);
+  const lastError = result.errors[result.errors.length - 1]?.message || metadataError;
+  showCompletionMessage(result.failed, lastError);
   window.parent.postMessage(
     {
       type: MessageTypes.FALLBACK_DONE,
-      result: { completed: saved, failed, total: chapters.length },
+      result: {
+        completed: result.completed,
+        failed: result.failed,
+        total: result.total,
+        detail: lastError,
+      },
     },
     '*'
   );
@@ -179,8 +233,12 @@ window.addEventListener('message', (event) => {
     } else if (state === 'downloading' && data) {
       updateProgressOverlay(data.completed || 0, data.total || 1, data.message || 'Downloading...');
     } else if (state === 'success') {
-      showCompletionMessage(data?.failedChapters || 0);
+      showCompletionMessage(data?.failedChapters || 0, data?.detail);
     }
+    return;
+  }
+  if (type === MessageTypes.DOWNLOAD_FALLBACK && data?.book) {
+    startPageFallback(data.book, data.startIndex, data.reason);
     return;
   }
   if (type === MessageTypes.RESET_UI) removeProgressOverlay();
@@ -194,7 +252,7 @@ if (ext?.runtime?.onMessage) {
       '[Libby Downloader] Native save did not finish:',
       message.reason || 'unknown reason'
     );
-    runBlobFallback(message.data, startIndex, message.reason);
+    startPageFallback(message.data, startIndex, message.reason);
   });
 }
 

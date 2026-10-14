@@ -67,6 +67,11 @@ describe('assembled extension packages', () => {
     assert.doesNotMatch(read('Shared (Extension)/Resources/iframe-ui.js'), /credentials:\s*'include'/);
     assert.ok(safari.host_permissions.some((pattern) => pattern.includes('cdn.overdrive.com')));
     assert.match(read('web/background.js'), /Native save failed; falling back/);
+    assert.match(read('web/background.js'), /Save decision:/);
+    assert.match(read('Shared (Extension)/Resources/content.js'), /Save decision:/);
+    assert.match(read('Shared (Extension)/Resources/content.js'), /Page fallback:/);
+    assert.match(read('Shared (Extension)/Resources/iframe-ui.js'), /function runPageFallback/);
+    assert.match(read('Shared (Extension)/Resources/iframe-ui.js'), /Fallback chapter/);
     assert.doesNotMatch(read('Shared (Extension)/Resources/content.js'), /^\s*export\s+/m);
     assert.ok(existsSync(join(chromeRoot, 'icons/icon128.png')));
     assert.ok(existsSync(join(safariRoot, 'icons/icon48.png')));

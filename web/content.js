@@ -49,13 +49,14 @@ function updateState(state, data) {
     sendIframeMessage(MessageTypes.UPDATE_PROGRESS_UI, 'downloading', {
       completed,
       total,
-      message: `Downloading ${completed} of ${total} chapters`,
+      message: data?.message || `Downloading ${completed} of ${total} chapters`,
     });
     return;
   }
   if (state === 'success') {
     sendIframeMessage(MessageTypes.UPDATE_PROGRESS_UI, 'success', {
       failedChapters: data?.failedChapters ?? 0,
+      detail: data?.detail || '',
     });
     return;
   }
@@ -72,6 +73,7 @@ function resetAfterDelay() {
 }
 
 let extractionTimeout = /** @type {number | null} */ (null);
+let fallbackPosted = false;
 
 function findPlayerFrame() {
   for (const iframe of Array.from(document.getElementsByTagName('iframe'))) {
@@ -90,8 +92,29 @@ function requestExtraction(iframe) {
   }, 10000);
 }
 
+function postFallbackToPlayer(book, startIndex, reason) {
+  if (fallbackPosted) {
+    log('Page fallback already sent to the player');
+    return;
+  }
+  fallbackPosted = true;
+  const text = `Page fallback: ${reason || 'no reason provided'}`;
+  log(text);
+  updateState('downloading', {
+    completed: startIndex,
+    total: Array.isArray(book?.chapters) ? book.chapters.length : 0,
+    message: text.slice(0, 180),
+  });
+  sendIframeMessage(MessageTypes.DOWNLOAD_FALLBACK, null, {
+    book,
+    startIndex,
+    reason: reason || 'no reason provided',
+  });
+}
+
 function handleButtonClick() {
   try {
+    fallbackPosted = false;
     log('Download button clicked');
     const iframe = findPlayerFrame();
     if (!iframe) throw new Error('Could not find the audiobook player on this page.');
@@ -118,7 +141,16 @@ async function handleExtractionSuccess(bookData) {
     if (!response?.success) {
       throw new Error(response?.error || 'Download failed');
     }
-    log('Download started', response.strategy || '');
+    log(
+      `Save decision: ${response.selected || '?'} → ${response.strategy || '?'}. ${response.reason || 'no reason provided'}`
+    );
+    if (response.fallback) {
+      postFallbackToPlayer(
+        bookData,
+        Number.isInteger(response.startIndex) ? response.startIndex : 0,
+        response.reason
+      );
+    }
   } catch (error) {
     showError(error instanceof Error ? error.message : 'Download failed');
   }
@@ -154,6 +186,7 @@ function handleWindowMessage(event) {
       failedChapters: result.failed,
       completedChapters: result.completed,
       totalChapters: result.total,
+      detail: result.detail,
     });
     resetAfterDelay();
     return;
@@ -166,7 +199,17 @@ function handleWindowMessage(event) {
 function handleBackgroundMessage(message) {
   if (!message || typeof message !== 'object') return;
   if (message.type === MessageTypes.DOWNLOAD_PROGRESS) {
+    log('Progress', message.progress?.completed ?? 0, 'of', message.progress?.total ?? 0);
     updateState('downloading', message.progress);
+    return;
+  }
+  if (message.type === MessageTypes.DOWNLOAD_FALLBACK && message.data) {
+    log('Background asked for page fallback:', message.reason || 'no reason provided');
+    postFallbackToPlayer(
+      message.data,
+      Number.isInteger(message.startIndex) ? message.startIndex : 0,
+      message.reason
+    );
     return;
   }
   if (message.type === MessageTypes.DOWNLOAD_COMPLETE) {

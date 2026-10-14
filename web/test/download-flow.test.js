@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { createChromeSaver, waitForDownload } from '../lib/chrome-downloads.js';
 import { downloadAllChapters } from '../lib/download-orchestrator.js';
 import { createNativeSaver } from '../lib/native-saver.js';
+import { runPageFallback } from '../lib/page-fallback.js';
 
 const chapters = [
   { index: 0, title: 'Chapter 1', url: 'https://listen.libbyapp.com/0.mp3?cmpt=1', duration: 10 },
@@ -68,6 +69,49 @@ describe('downloadAllChapters', () => {
     assert.equal(result.completed, 1);
     assert.equal(result.fallback, true);
     assert.equal(result.errors[0].error, 'http-401');
+  });
+});
+
+describe('page fallback loop', () => {
+  it('saves later chapters when an earlier fetch times out', async () => {
+    const events = [];
+    const result = await runPageFallback({
+      chapters: [{ url: 'https://listen.libbyapp.com/0.mp3' }, { url: 'https://audioclips.cdn.overdrive.com/1.mp3' }],
+      timeoutMs: 30,
+      delayMs: 0,
+      fetchChapter(_chapter, index) {
+        if (index === 0) return new Promise(() => {});
+        return Promise.resolve('saved');
+      },
+      onChapter(event) {
+        events.push(event.phase === 'error' ? `${event.phase}:${event.index}:${event.message}` : `${event.phase}:${event.index}`);
+      },
+    });
+    assert.equal(result.completed, 1);
+    assert.equal(result.failed, 1);
+    assert.equal(result.total, 2);
+    assert.match(result.errors[0].message, /Chapter 1 timed out after 30ms/);
+    assert.deepEqual(events, [
+      'start:0',
+      'error:0:Chapter 1 timed out after 30ms',
+      'start:1',
+      'saved:1',
+    ]);
+  });
+
+  it('records a chapter error and continues', async () => {
+    const result = await runPageFallback({
+      chapters: [{ url: 'https://listen.libbyapp.com/a.mp3' }, { url: 'https://listen.libbyapp.com/b.mp3' }],
+      timeoutMs: 1000,
+      delayMs: 0,
+      fetchChapter(_chapter, index) {
+        if (index === 0) throw new Error('HTTP 403');
+        return Promise.resolve('saved');
+      },
+    });
+    assert.equal(result.completed, 1);
+    assert.equal(result.failed, 1);
+    assert.equal(result.errors[0].message, 'HTTP 403');
   });
 });
 

@@ -23,36 +23,32 @@ class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
             relativePath
         )
 
-        // Download on a background queue and reply when it finishes.
-        // Waiting here blocked the extension's main thread for the whole
-        // transfer, and Safari dropped the native message before the file
-        // was written.
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result = DownloadStore.handle(message)
-            if let error = result["error"] as? String {
-                os_log(
-                    .error,
-                    "Libby Downloader native result error=%{public}@ detail=%{public}@",
-                    error,
-                    result["detail"] as? String ?? ""
-                )
-            } else {
-                os_log(
-                    .default,
-                    "Libby Downloader native result ok path=%{public}@",
-                    result["path"] as? String ?? ""
-                )
-            }
-            let response = NSExtensionItem()
-            if #available(iOS 15.0, macOS 11.0, *) {
-                response.userInfo = [SFExtensionMessageKey: result]
-            } else {
-                response.userInfo = ["message": result]
-            }
-            DispatchQueue.main.async {
-                context.completeRequest(returningItems: [response], completionHandler: nil)
-            }
+        // Reply before returning. Safari delivers an empty sendNativeMessage
+        // result when completeRequest runs after beginRequest returns, and the
+        // page then only sees strategy blob-fallback. URLSession callbacks use
+        // their own queue, so blocking this call does not deadlock the transfer.
+        let result = DownloadStore.handle(message)
+        if let error = result["error"] as? String {
+            os_log(
+                .error,
+                "Libby Downloader native result error=%{public}@ detail=%{public}@",
+                error,
+                result["detail"] as? String ?? ""
+            )
+        } else {
+            os_log(
+                .default,
+                "Libby Downloader native result ok path=%{public}@",
+                result["path"] as? String ?? ""
+            )
         }
+        let response = NSExtensionItem()
+        if #available(iOS 15.0, macOS 11.0, *) {
+            response.userInfo = [SFExtensionMessageKey: result]
+        } else {
+            response.userInfo = ["message": result]
+        }
+        context.completeRequest(returningItems: [response], completionHandler: nil)
     }
 
     private static func messageDictionary(from context: NSExtensionContext) -> [String: Any] {

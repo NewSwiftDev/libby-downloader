@@ -10,13 +10,59 @@ import { APP_GROUP_ID, DOWNLOADS_SUBDIRECTORY } from './paths.js';
 export const MAIN_WORLD_SAFARI_VERSION = 18;
 
 /**
- * @param {{ downloadsDownload?: unknown, sendNativeMessage?: unknown }} [capabilities]
+ * Safari's user agent does not include Chrome's token. Chrome's does.
+ * @param {string} [userAgent]
+ * @returns {'safari' | 'chrome' | 'unknown'}
+ */
+export function detectBrowserName(userAgent = '') {
+  if (/Chrome\/|Chromium\/|Edg\//.test(userAgent)) return 'chrome';
+  // Extension background pages on Safari are WebKit and sometimes omit the Safari token.
+  if (/Safari\/|AppleWebKit\//.test(userAgent)) return 'safari';
+  return 'unknown';
+}
+
+/**
+ * Chrome saves with downloads.download. Safari must use the containing app
+ * even if a downloads.download function is also present.
+ * @param {{ downloadsDownload?: unknown, sendNativeMessage?: unknown, browserName?: string }} [capabilities]
+ * @returns {{ strategy: 'chrome-downloads' | 'native' | 'blob-fallback', reason: string }}
+ */
+export function describeSaveStrategy({ downloadsDownload, sendNativeMessage, browserName } = {}) {
+  const downloadType = typeof downloadsDownload;
+  const nativeType = typeof sendNativeMessage;
+  if (browserName === 'safari') {
+    if (nativeType === 'function') {
+      return {
+        strategy: 'native',
+        reason:
+          downloadType === 'function'
+            ? 'Safari uses runtime.sendNativeMessage; downloads.download is ignored'
+            : 'runtime.sendNativeMessage is a function',
+      };
+    }
+    return {
+      strategy: 'blob-fallback',
+      reason: `Safari has no native messaging (runtime.sendNativeMessage is ${nativeType}; downloads.download is ${downloadType})`,
+    };
+  }
+  if (downloadType === 'function') {
+    return { strategy: 'chrome-downloads', reason: 'downloads.download is a function' };
+  }
+  if (nativeType === 'function') {
+    return { strategy: 'native', reason: 'runtime.sendNativeMessage is a function' };
+  }
+  return {
+    strategy: 'blob-fallback',
+    reason: `downloads.download is ${downloadType}; runtime.sendNativeMessage is ${nativeType}`,
+  };
+}
+
+/**
+ * @param {{ downloadsDownload?: unknown, sendNativeMessage?: unknown, browserName?: string }} [capabilities]
  * @returns {'chrome-downloads' | 'native' | 'blob-fallback'}
  */
-export function selectSaveStrategy({ downloadsDownload, sendNativeMessage } = {}) {
-  if (typeof downloadsDownload === 'function') return 'chrome-downloads';
-  if (typeof sendNativeMessage === 'function') return 'native';
-  return 'blob-fallback';
+export function selectSaveStrategy(capabilities) {
+  return describeSaveStrategy(capabilities).strategy;
 }
 
 /**
