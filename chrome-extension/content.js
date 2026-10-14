@@ -1,3 +1,6 @@
+(() => {
+  if (globalThis["__libbyDownloaderContent"]) return;
+  globalThis["__libbyDownloaderContent"] = true;
 /**
  * Content script for Libby loan pages. Routes the player iframe, this page,
  * and the background worker.
@@ -167,6 +170,7 @@ function requestExtraction(iframe) {
 
 function handleButtonClick() {
   try {
+    log('Download button clicked');
     const iframe = findPlayerFrame();
     if (!iframe) throw new Error('Could not find the audiobook player on this page.');
     setIframe(iframe);
@@ -262,3 +266,4 @@ if (!window.location.pathname.includes('/open/loan/')) {
   });
   log('Ready');
 }
+})();

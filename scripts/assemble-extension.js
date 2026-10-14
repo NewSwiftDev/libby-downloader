@@ -30,13 +30,36 @@ function resolveIncludes(filename, seen = new Set()) {
   });
 }
 
+/**
+ * Safari runs every content script for a frame in one JavaScript world.
+ * A second top-level `const MessageTypes` (or `function sleep`) is a
+ * SyntaxError and the later script never registers its listeners.
+ * An IIFE keeps those bindings private. The guard skips a second injection
+ * of the same file, which would otherwise stack the JSON.parse hook.
+ */
+function wrapClassicScript(source, guardName) {
+  const body = source.endsWith('\n') ? source : `${source}\n`;
+  return `(() => {
+  if (globalThis[${JSON.stringify(guardName)}]) return;
+  globalThis[${JSON.stringify(guardName)}] = true;
+${body}})();\n`;
+}
+
+const classicGuards = {
+  'content.js': '__libbyDownloaderContent',
+  'iframe-extractor.js': '__libbyDownloaderExtractor',
+  'iframe-ui.js': '__libbyDownloaderUi',
+};
+
 function writeProcessed(entry, destination) {
   const text = resolveIncludes(entry);
   if (text.includes('/*__INCLUDE') || /^\s*export\s+/m.test(text) || /^\s*import\s+/m.test(text)) {
     throw new Error(`Unresolved module syntax in ${destination}`);
   }
+  const fileName = entry.split('/').pop();
+  const guarded = wrapClassicScript(text, classicGuards[fileName]);
   mkdirSync(dirname(destination), { recursive: true });
-  writeFileSync(destination, text);
+  writeFileSync(destination, guarded);
 }
 
 function copyFile(from, to) {

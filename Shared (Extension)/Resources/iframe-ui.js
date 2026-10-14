@@ -1,3 +1,6 @@
+(() => {
+  if (globalThis["__libbyDownloaderUi"]) return;
+  globalThis["__libbyDownloaderUi"] = true;
 /**
  * Player-frame UI. Isolated world: injects the download button and, when
  * the containing app cannot write files, fetches chapters with the page
@@ -375,6 +378,7 @@ function injectDownloadButton() {
   }
 
   button.addEventListener('click', () => {
+    console.log('[Libby Downloader] Download button clicked');
     window.parent.postMessage({ type: MessageTypes.LIBBY_DOWNLOADER_BUTTON_CLICKED }, '*');
   });
 }
@@ -384,3 +388,4 @@ if (document.readyState === 'loading') {
 } else {
   injectDownloadButton();
 }
+})();

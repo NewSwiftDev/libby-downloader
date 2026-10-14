@@ -1,3 +1,6 @@
+(() => {
+  if (globalThis["__libbyDownloaderExtractor"]) return;
+  globalThis["__libbyDownloaderExtractor"] = true;
 /**
  * Player-frame extractor. Runs in the page MAIN world so it can read
  * window.BIF and Libby's crypto parameters. Safari needs version 18 or
@@ -193,3 +196,4 @@ function resolveAuthors(creators) {
 }
 
 console.log('[Libby Downloader] Ready to extract');
+})();

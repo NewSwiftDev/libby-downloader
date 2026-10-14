@@ -222,6 +222,7 @@ function injectDownloadButton() {
   }
 
   button.addEventListener('click', () => {
+    console.log('[Libby Downloader] Download button clicked');
     window.parent.postMessage({ type: MessageTypes.LIBBY_DOWNLOADER_BUTTON_CLICKED }, '*');
   });
 }

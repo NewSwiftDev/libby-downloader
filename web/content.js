@@ -92,6 +92,7 @@ function requestExtraction(iframe) {
 
 function handleButtonClick() {
   try {
+    log('Download button clicked');
     const iframe = findPlayerFrame();
     if (!iframe) throw new Error('Could not find the audiobook player on this page.');
     setIframe(iframe);
