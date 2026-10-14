@@ -54,6 +54,10 @@
 		9143EC26307FCB05001A9C5E /* libby-downloader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "libby-downloader.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9143EC31307FCB05001A9C5E /* libby-downloader Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "libby-downloader Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9143EC3B307FCB05001A9C5E /* libby-downloader Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "libby-downloader Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		91C269BB30800C6D00F3D81F /* LICENSE */ = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = "<group>"; };
+		91C269BC30800C6D00F3D81F /* package.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = package.json; sourceTree = "<group>"; };
+		91C269BD30800C6D00F3D81F /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		91C269BE30800C8000F3D81F /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -62,9 +66,9 @@
 			membershipExceptions = (
 				"/Localized: Resources/Main.html",
 				Assets.xcassets,
+				DownloadLibrary.swift,
 				Resources/Icon.png,
 				Resources/Script.js,
-				DownloadLibrary.swift,
 				Resources/Style.css,
 				ViewController.swift,
 			);
@@ -74,7 +78,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				LibbyDownloaderExtension.entitlements,
 			);
 			target = 9143EC30307FCB05001A9C5E /* libby-downloader Extension (iOS) */;
 		};
@@ -82,7 +85,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				LibbyDownloader.entitlements,
 			);
 			target = 9143EC13307FCB05001A9C5E /* libby-downloader (iOS) */;
 		};
@@ -91,18 +93,11 @@
 			membershipExceptions = (
 				"/Localized: Resources/Main.html",
 				Assets.xcassets,
+				DownloadLibrary.swift,
 				Resources/Icon.png,
 				Resources/Script.js,
-				DownloadLibrary.swift,
 				Resources/Style.css,
 				ViewController.swift,
-			);
-			target = 9143EC25307FCB05001A9C5E /* libby-downloader (macOS) */;
-		};
-		9143EC80307FCB05001A9C5E /* Exceptions for "macOS (App)" folder in "libby-downloader (macOS)" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				LibbyDownloader.entitlements,
 			);
 			target = 9143EC25307FCB05001A9C5E /* libby-downloader (macOS) */;
 		};
@@ -110,7 +105,6 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
-				LibbyDownloaderExtension.entitlements,
 			);
 			target = 9143EC3A307FCB05001A9C5E /* libby-downloader Extension (macOS) */;
 		};
@@ -122,8 +116,8 @@
 				Resources/background.js,
 				Resources/content.js,
 				Resources/icons,
-				Resources/iframe-extractor.js,
-				Resources/iframe-ui.js,
+				"Resources/iframe-extractor.js",
+				"Resources/iframe-ui.js",
 				Resources/images,
 				Resources/lib,
 				Resources/manifest.json,
@@ -143,8 +137,8 @@
 				Resources/background.js,
 				Resources/content.js,
 				Resources/icons,
-				Resources/iframe-extractor.js,
-				Resources/iframe-ui.js,
+				"Resources/iframe-extractor.js",
+				"Resources/iframe-ui.js",
 				Resources/images,
 				Resources/lib,
 				Resources/manifest.json,
@@ -194,9 +188,6 @@
 		};
 		9143EC27307FCB05001A9C5E /* macOS (App) */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				9143EC80307FCB05001A9C5E /* Exceptions for "macOS (App)" folder in "libby-downloader (macOS)" target */,
-			);
 			path = "macOS (App)";
 			sourceTree = "<group>";
 		};
@@ -245,6 +236,10 @@
 		9143EBF7307FCB04001A9C5E = {
 			isa = PBXGroup;
 			children = (
+				91C269BE30800C8000F3D81F /* .gitignore */,
+				91C269BB30800C6D00F3D81F /* LICENSE */,
+				91C269BC30800C6D00F3D81F /* package.json */,
+				91C269BD30800C6D00F3D81F /* README.md */,
 				9143EBFC307FCB05001A9C5E /* Shared (App) */,
 				9143EC05307FCB05001A9C5E /* Shared (Extension) */,
 				9143EC16307FCB05001A9C5E /* iOS (App) */,
@@ -458,11 +453,11 @@
 		9143EC61307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader Extension (iOS)" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "iOS (Extension)/LibbyDownloaderExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = "iOS (Extension)/LibbyDownloaderExtension.entitlements";
 				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -493,11 +488,11 @@
 		9143EC62307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader Extension (iOS)" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "iOS (Extension)/LibbyDownloaderExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = "iOS (Extension)/LibbyDownloaderExtension.entitlements";
 				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -531,15 +526,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "iOS (App)/LibbyDownloader.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = "iOS (App)/LibbyDownloader.entitlements";
 				INFOPLIST_FILE = "iOS (App)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -575,15 +570,15 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "iOS (App)/LibbyDownloader.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				GENERATE_INFOPLIST_FILE = YES;
-				CODE_SIGN_ENTITLEMENTS = "iOS (App)/LibbyDownloader.entitlements";
 				INFOPLIST_FILE = "iOS (App)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
-				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -618,12 +613,12 @@
 		9143EC6B307FCB05001A9C5E /* Debug configuration for PBXNativeTarget "libby-downloader Extension (macOS)" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "macOS (Extension)/LibbyDownloaderExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
-				CODE_SIGN_ENTITLEMENTS = "macOS (Extension)/LibbyDownloaderExtension.entitlements";
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -656,12 +651,12 @@
 		9143EC6C307FCB05001A9C5E /* Release configuration for PBXNativeTarget "libby-downloader Extension (macOS)" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "macOS (Extension)/LibbyDownloaderExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
-				CODE_SIGN_ENTITLEMENTS = "macOS (Extension)/LibbyDownloaderExtension.entitlements";
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -696,6 +691,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "macOS (App)/LibbyDownloader.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
@@ -705,7 +701,6 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
-				CODE_SIGN_ENTITLEMENTS = "macOS (App)/LibbyDownloader.entitlements";
 				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -738,6 +733,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "macOS (App)/LibbyDownloader.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
@@ -747,7 +743,6 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
-				CODE_SIGN_ENTITLEMENTS = "macOS (App)/LibbyDownloader.entitlements";
 				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
