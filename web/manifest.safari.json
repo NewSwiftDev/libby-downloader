@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "default_locale": "en",
+  "name": "__MSG_extension_name__",
+  "description": "__MSG_extension_description__",
+  "version": "1.2.0",
+  "icons": {
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png",
+    "256": "images/icon-256.png",
+    "512": "images/icon-512.png"
+  },
+  "permissions": ["cookies"],
+  "host_permissions": ["*://*.libbyapp.com/*", "*://*.listen.libbyapp.com/*"],
+  "background": {
+    "scripts": ["background.js"],
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.libbyapp.com/open/loan/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.listen.libbyapp.com/*"],
+      "js": ["iframe-extractor.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    },
+    {
+      "matches": ["*://*.listen.libbyapp.com/*"],
+      "js": ["iframe-ui.js"],
+      "css": ["styles/content-styles.css"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "images/toolbar-icon.svg",
+    "default_title": "Libby Downloader"
+  }
+}

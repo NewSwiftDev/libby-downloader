@@ -1,0 +1,15 @@
+{
+  "name": "libby-downloader",
+  "version": "1.2.0",
+  "private": true,
+  "description": "Chrome extension and Safari Web Extension for downloading Libby audiobooks. Based on pdugan20/libby-downloader.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "assemble": "node scripts/assemble-extension.js",
+    "test": "node scripts/assemble-extension.js && node --test web/test/*.test.js"
+  }
+}

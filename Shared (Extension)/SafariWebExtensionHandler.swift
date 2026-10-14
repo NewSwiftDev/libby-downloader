@@ -2,41 +2,60 @@
 //  SafariWebExtensionHandler.swift
 //  Shared (Extension)
 //
-//  Created by Mark Honomichl on 10/14/26.
+//  Receives browser.runtime.sendNativeMessage("application.id", …) and
+//  writes chapter files. Replies are property-list dictionaries.
+//
+//  Copyright (c) 2026 libby-downloader contributors.
 //
 
 import SafariServices
 import os.log
 
 class SafariWebExtensionHandler: NSObject, NSExtensionRequestHandling {
-
     func beginRequest(with context: NSExtensionContext) {
-        let request = context.inputItems.first as? NSExtensionItem
+        let message = Self.messageDictionary(from: context)
+        let action = message["action"] as? String ?? "unknown"
+        let relativePath = message["relativePath"] as? String ?? ""
+        os_log(
+            .default,
+            "Libby Downloader native message action=%{public}@ path=%{public}@",
+            action,
+            relativePath
+        )
 
-        let profile: UUID?
-        if #available(iOS 17.0, macOS 14.0, *) {
-            profile = request?.userInfo?[SFExtensionProfileKey] as? UUID
-        } else {
-            profile = request?.userInfo?["profile"] as? UUID
-        }
-
-        let message: Any?
-        if #available(iOS 15.0, macOS 11.0, *) {
-            message = request?.userInfo?[SFExtensionMessageKey]
-        } else {
-            message = request?.userInfo?["message"]
-        }
-
-        os_log(.default, "Received message from browser.runtime.sendNativeMessage: %@ (profile: %@)", String(describing: message), profile?.uuidString ?? "none")
-
+        let result = Self.perform(message)
         let response = NSExtensionItem()
         if #available(iOS 15.0, macOS 11.0, *) {
-            response.userInfo = [ SFExtensionMessageKey: [ "echo": message ] ]
+            response.userInfo = [SFExtensionMessageKey: result]
         } else {
-            response.userInfo = [ "message": [ "echo": message ] ]
+            response.userInfo = ["message": result]
         }
-
-        context.completeRequest(returningItems: [ response ], completionHandler: nil)
+        context.completeRequest(returningItems: [response], completionHandler: nil)
     }
 
+    private static func perform(_ message: [String: Any]) -> [String: Any] {
+        let group = DispatchGroup()
+        group.enter()
+        var result: [String: Any] = ["ok": false, "error": "not-completed"]
+        DispatchQueue.global(qos: .userInitiated).async {
+            result = DownloadStore.handle(message)
+            group.leave()
+        }
+        if group.wait(timeout: .now() + 180) == .timedOut {
+            return ["ok": false, "error": "timeout"]
+        }
+        return result
+    }
+
+    private static func messageDictionary(from context: NSExtensionContext) -> [String: Any] {
+        let request = context.inputItems.first as? NSExtensionItem
+        if #available(iOS 15.0, macOS 11.0, *),
+           let message = request?.userInfo?[SFExtensionMessageKey] as? [String: Any] {
+            return message
+        }
+        if let message = request?.userInfo?["message"] as? [String: Any] {
+            return message
+        }
+        return [:]
+    }
 }

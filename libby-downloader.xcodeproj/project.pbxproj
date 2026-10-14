@@ -64,6 +64,7 @@
 				Assets.xcassets,
 				Resources/Icon.png,
 				Resources/Script.js,
+				DownloadLibrary.swift,
 				Resources/Style.css,
 				ViewController.swift,
 			);
@@ -73,6 +74,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				LibbyDownloaderExtension.entitlements,
 			);
 			target = 9143EC30307FCB05001A9C5E /* libby-downloader Extension (iOS) */;
 		};
@@ -80,6 +82,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				LibbyDownloader.entitlements,
 			);
 			target = 9143EC13307FCB05001A9C5E /* libby-downloader (iOS) */;
 		};
@@ -90,8 +93,16 @@
 				Assets.xcassets,
 				Resources/Icon.png,
 				Resources/Script.js,
+				DownloadLibrary.swift,
 				Resources/Style.css,
 				ViewController.swift,
+			);
+			target = 9143EC25307FCB05001A9C5E /* libby-downloader (macOS) */;
+		};
+		9143EC80307FCB05001A9C5E /* Exceptions for "macOS (App)" folder in "libby-downloader (macOS)" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				LibbyDownloader.entitlements,
 			);
 			target = 9143EC25307FCB05001A9C5E /* libby-downloader (macOS) */;
 		};
@@ -99,20 +110,27 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
+				LibbyDownloaderExtension.entitlements,
 			);
 			target = 9143EC3A307FCB05001A9C5E /* libby-downloader Extension (macOS) */;
 		};
 		9143EC72307FCB05001A9C5E /* Exceptions for "Shared (Extension)" folder in "libby-downloader Extension (iOS)" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				DownloadStore.swift,
 				Resources/_locales,
 				Resources/background.js,
 				Resources/content.js,
+				Resources/icons,
+				Resources/iframe-extractor.js,
+				Resources/iframe-ui.js,
 				Resources/images,
+				Resources/lib,
 				Resources/manifest.json,
 				Resources/popup.css,
 				Resources/popup.html,
 				Resources/popup.js,
+				Resources/styles,
 				SafariWebExtensionHandler.swift,
 			);
 			target = 9143EC30307FCB05001A9C5E /* libby-downloader Extension (iOS) */;
@@ -120,14 +138,20 @@
 		9143EC73307FCB05001A9C5E /* Exceptions for "Shared (Extension)" folder in "libby-downloader Extension (macOS)" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				DownloadStore.swift,
 				Resources/_locales,
 				Resources/background.js,
 				Resources/content.js,
+				Resources/icons,
+				Resources/iframe-extractor.js,
+				Resources/iframe-ui.js,
 				Resources/images,
+				Resources/lib,
 				Resources/manifest.json,
 				Resources/popup.css,
 				Resources/popup.html,
 				Resources/popup.js,
+				Resources/styles,
 				SafariWebExtensionHandler.swift,
 			);
 			target = 9143EC3A307FCB05001A9C5E /* libby-downloader Extension (macOS) */;
@@ -152,7 +176,10 @@
 			);
 			explicitFolders = (
 				Resources/_locales,
+				Resources/icons,
 				Resources/images,
+				Resources/lib,
+				Resources/styles,
 			);
 			path = "Shared (Extension)";
 			sourceTree = "<group>";
@@ -167,6 +194,9 @@
 		};
 		9143EC27307FCB05001A9C5E /* macOS (App) */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9143EC80307FCB05001A9C5E /* Exceptions for "macOS (App)" folder in "libby-downloader (macOS)" target */,
+			);
 			path = "macOS (App)";
 			sourceTree = "<group>";
 		};
@@ -432,6 +462,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = "iOS (Extension)/LibbyDownloaderExtension.entitlements";
 				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -466,6 +497,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = "iOS (Extension)/LibbyDownloaderExtension.entitlements";
 				INFOPLIST_FILE = "iOS (Extension)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -503,9 +535,12 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = "iOS (App)/LibbyDownloader.entitlements";
 				INFOPLIST_FILE = "iOS (App)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -544,9 +579,12 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				GENERATE_INFOPLIST_FILE = YES;
+				CODE_SIGN_ENTITLEMENTS = "iOS (App)/LibbyDownloader.entitlements";
 				INFOPLIST_FILE = "iOS (App)/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_UIFileSharingEnabled = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -585,6 +623,8 @@
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				CODE_SIGN_ENTITLEMENTS = "macOS (Extension)/LibbyDownloaderExtension.entitlements";
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
@@ -621,6 +661,8 @@
 				DEVELOPMENT_TEAM = 8DJHS9AWYU;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
+				CODE_SIGN_ENTITLEMENTS = "macOS (Extension)/LibbyDownloaderExtension.entitlements";
+				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "macOS (Extension)/Info.plist";
@@ -663,6 +705,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
+				CODE_SIGN_ENTITLEMENTS = "macOS (App)/LibbyDownloader.entitlements";
 				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -704,6 +747,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "libby-downloader";
+				CODE_SIGN_ENTITLEMENTS = "macOS (App)/LibbyDownloader.entitlements";
 				INFOPLIST_KEY_NSMainStoryboardFile = Main;
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
