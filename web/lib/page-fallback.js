@@ -1,8 +1,90 @@
 /**
  * In-page chapter fetch used when the containing app cannot write files.
  * Each chapter has a timeout so a hung CDN request cannot stall the book.
+ * Retry counts match DownloadStore.maxChapterAttempts.
  * Copyright (c) 2026 libby-downloader contributors.
  */
+
+import { formatChapterFailure } from './chapter-urls.js';
+
+/** One retry. Keep in sync with DownloadStore.maxChapterAttempts. */
+export const CHAPTER_FETCH_ATTEMPTS = 2;
+
+export const RETRYABLE_CHAPTER_STATUSES = new Set([429, 500, 502, 503]);
+
+/**
+ * @param {unknown} status
+ * @returns {boolean}
+ */
+export function isRetryableChapterStatus(status) {
+  return typeof status === 'number' && RETRYABLE_CHAPTER_STATUSES.has(status);
+}
+
+/**
+ * @param {number} attempt Zero-based attempt that just failed.
+ * @returns {number}
+ */
+export function chapterRetryDelayMs(attempt) {
+  return 1000 * (attempt + 1);
+}
+
+/**
+ * @template T
+ * @param {(attempt: number) => Promise<T>} run
+ * @param {{ attempts?: number, sleep?: (ms: number) => Promise<void> }} [options]
+ * @returns {Promise<T>}
+ */
+export async function withChapterRetries(run, { attempts = CHAPTER_FETCH_ATTEMPTS, sleep } = {}) {
+  const pause = sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await run(attempt);
+    } catch (error) {
+      lastError = error;
+      const status = error && typeof error === 'object' ? /** @type {{ status?: unknown }} */ (error).status : undefined;
+      if (attempt >= attempts - 1 || !isRetryableChapterStatus(status)) throw error;
+      await pause(chapterRetryDelayMs(attempt));
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * Fetch one chapter URL. credentials and redirect are the caller's choice.
+ * A retryable HTTP status is tried once more; other statuses fail immediately.
+ * @param {{
+ *   url: string,
+ *   index: number,
+ *   fetchImpl: (url: string, options: { signal?: AbortSignal }) => Promise<{ ok?: boolean, status?: number }>,
+ *   signal?: AbortSignal,
+ *   attempts?: number,
+ *   sleep?: (ms: number) => Promise<void>,
+ * }} input
+ */
+export async function fetchChapterResponse({ url, index, fetchImpl, signal, attempts, sleep }) {
+  let host = 'invalid-url';
+  try {
+    host = new URL(url).host;
+  } catch {
+    host = 'invalid-url';
+  }
+  return withChapterRetries(
+    async () => {
+      const response = await fetchImpl(url, { signal });
+      if (!response || response.ok !== true) {
+        const status = response && typeof response.status === 'number' ? response.status : 0;
+        const error = /** @type {Error & { status?: number }} */ (
+          new Error(formatChapterFailure(index, { status, message: `HTTP ${status} from ${host}` }, url))
+        );
+        error.status = status;
+        throw error;
+      }
+      return response;
+    },
+    { attempts, sleep }
+  );
+}
 
 /**
  * @param {(signal: AbortSignal) => Promise<unknown>} work

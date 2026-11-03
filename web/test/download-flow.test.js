@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { createChromeSaver, waitForDownload } from '../lib/chrome-downloads.js';
 import { downloadAllChapters } from '../lib/download-orchestrator.js';
 import { createNativeSaver } from '../lib/native-saver.js';
-import { runPageFallback } from '../lib/page-fallback.js';
+import { fetchChapterResponse, runPageFallback } from '../lib/page-fallback.js';
 
 const chapters = [
   { index: 0, title: 'Chapter 1', url: 'https://listen.libbyapp.com/0.mp3?cmpt=1', duration: 10 },
@@ -97,6 +97,65 @@ describe('page fallback loop', () => {
       'start:1',
       'saved:1',
     ]);
+  });
+
+  it('retries HTTP 500 once, then keeps the chapter that succeeds', async () => {
+    let calls = 0;
+    const response = await fetchChapterResponse({
+      url: 'https://dewey-798448a22291a2d039c2a861cf221e24.listen.libbyapp.com/a.mp3?cmpt=player',
+      index: 0,
+      sleep: async () => {},
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls === 1) return { ok: false, status: 500 };
+        return { ok: true, status: 200 };
+      },
+    });
+    assert.equal(calls, 2);
+    assert.equal(response.status, 200);
+  });
+
+  it('does not retry a non-retryable status, and reports the chapter after the 500 retry is exhausted', async () => {
+    let forbidden = 0;
+    await assert.rejects(
+      fetchChapterResponse({
+        url: 'https://listen.libbyapp.com/a.mp3?cmpt=1',
+        index: 0,
+        sleep: async () => {},
+        fetchImpl: async () => {
+          forbidden += 1;
+          return { ok: false, status: 403 };
+        },
+      }),
+      (error) => {
+        assert.equal(error.status, 403);
+        assert.match(error.message, /^Chapter 1: HTTP 403 from listen\.libbyapp\.com/);
+        return true;
+      }
+    );
+    assert.equal(forbidden, 1);
+
+    let failures = 0;
+    await assert.rejects(
+      fetchChapterResponse({
+        url: 'https://dewey-798448a22291a2d039c2a861cf221e24.listen.libbyapp.com/%7B155E3E12-9DBB-40AE-8E57-04F5DD2494D9%7DFmt425-Part24.mp3?cmpt=stale',
+        index: 23,
+        sleep: async () => {},
+        fetchImpl: async () => {
+          failures += 1;
+          return { ok: false, status: 500 };
+        },
+      }),
+      (error) => {
+        assert.equal(error.status, 500);
+        assert.equal(
+          error.message,
+          'Chapter 24: HTTP 500 from dewey-798448a22291a2d039c2a861cf221e24.listen.libbyapp.com ({155E3E12-9DBB-40AE-8E57-04F5DD2494D9}Fmt425-Part24.mp3)'
+        );
+        return true;
+      }
+    );
+    assert.equal(failures, 2);
   });
 
   it('records a chapter error and continues', async () => {
@@ -214,7 +273,30 @@ describe('native saver', () => {
     if (!ping.ok) assert.equal(ping.error.message, 'The native application is not running');
     await assert.rejects(saver.saveChapter(chapters[0], 'Test Book', 0), (error) => {
       assert.equal(error.fallback, true);
-      assert.equal(error.message, 'The native application is not running');
+      assert.equal(error.message, 'Chapter 1: The native application is not running (0.mp3)');
+      assert.equal(error.message.includes('sendNativeMessage'), false);
+      return true;
+    });
+  });
+
+  it('names the chapter and HTTP status when the app returns 500', async () => {
+    const saver = createNativeSaver(async () => ({
+      ok: false,
+      error: 'http-500',
+      status: 500,
+      detail: 'HTTP 500 from dewey-798448a22291a2d039c2a861cf221e24.listen.libbyapp.com',
+    }));
+    const chapter = {
+      url: 'https://dewey-798448a22291a2d039c2a861cf221e24.listen.libbyapp.com/%7B155E3E12-9DBB-40AE-8E57-04F5DD2494D9%7DFmt425-Part24.mp3?cmpt=stale',
+    };
+    await assert.rejects(saver.saveChapter(chapter, 'How to Be Good at Life', 23), (error) => {
+      assert.equal(error.fallback, true);
+      assert.equal(error.status, 500);
+      assert.equal(
+        error.message,
+        'Chapter 24: HTTP 500 from dewey-798448a22291a2d039c2a861cf221e24.listen.libbyapp.com ({155E3E12-9DBB-40AE-8E57-04F5DD2494D9}Fmt425-Part24.mp3)'
+      );
+      assert.equal(error.message.includes('sendNativeMessage'), false);
       return true;
     });
   });

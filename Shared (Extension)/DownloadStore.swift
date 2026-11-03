@@ -258,6 +258,10 @@ enum DownloadStore {
         return cookie
     }
 
+    /// One retry. Keep in sync with CHAPTER_FETCH_ATTEMPTS in web/lib/page-fallback.js.
+    private static let maxChapterAttempts = 2
+    private static let retryableHTTPStatuses: Set<Int> = [429, 500, 502, 503]
+
     private static func download(_ url: URL, to destination: URL, cookie: String?) throws {
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
@@ -271,7 +275,30 @@ enum DownloadStore {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
         }
         os_log(.default, "Libby Downloader fetching host=%{public}@", url.host ?? "")
-        try ChapterTransfer(destination: destination).run(request)
+        var lastError: DownloadStoreError?
+        for attempt in 1...maxChapterAttempts {
+            do {
+                try ChapterTransfer(destination: destination).run(request)
+                return
+            } catch let error as DownloadStoreError {
+                lastError = error
+                let status = error.httpStatus
+                let canRetry = status.map { retryableHTTPStatuses.contains($0) } ?? false
+                if !canRetry || attempt == maxChapterAttempts {
+                    throw error
+                }
+                os_log(
+                    .error,
+                    "Libby Downloader HTTP %{public}@ from %{public}@; retry %{public}@/%{public}@",
+                    String(status ?? 0),
+                    error.httpHost ?? url.host ?? "",
+                    String(attempt),
+                    String(maxChapterAttempts)
+                )
+                Thread.sleep(forTimeInterval: Double(attempt))
+            }
+        }
+        throw lastError ?? DownloadStoreError.http(status: 0, host: url.host)
     }
 
     private static func write(_ text: String, to destination: URL) throws {
@@ -433,6 +460,16 @@ private enum DownloadStoreError: Error {
     case http(status: Int, host: String?)
     case timeout
     case redirectBlocked(String)
+
+    var httpStatus: Int? {
+        if case let .http(status, _) = self { return status }
+        return nil
+    }
+
+    var httpHost: String? {
+        if case let .http(_, host) = self { return host }
+        return nil
+    }
 
     var response: [String: Any] {
         switch self {

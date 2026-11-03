@@ -30,8 +30,8 @@ The Chrome package still uses `chrome.downloads`. Safari has no downloads API, s
 ## Limitations
 
 - MAIN-world capture is required to build chapter URLs. Safari added `world: "MAIN"` content scripts in Safari 18. Older Safari loads the rest of the extension, but extraction will not see Libby’s page objects.
-- Let the audiobook play for a few seconds before downloading so Libby publishes its crypto parameters. This is the same requirement as the Chrome extension.
-- The native app fetches the signed `https://*.libbyapp.com` chapter URL and follows its redirect to `https://*.cdn.overdrive.com`. Other hosts are refused. A page fetch cannot use cookies on that redirect: the CDN replies with `Access-Control-Allow-Origin: *`.
+- Let the audiobook play for a moment before downloading. The extension saves the media URL the player itself requested. Since 2026-10-29, links built from the init value `-odread-cmpt-params` are rejected with HTTP 500 by `*.listen.libbyapp.com`. If a part has not loaded yet, the extension seeks the player to that part, records the URL, and puts playback back.
+- The native app fetches that signed `https://*.libbyapp.com` chapter URL and follows its redirect to `https://*.cdn.overdrive.com`. Other hosts are refused. A page fetch cannot use cookies on that redirect: the CDN replies with `Access-Control-Allow-Origin: *`. HTTP 429, 500, 502, and 503 are retried once. A failure names the chapter and the status.
 - iOS does not have a user-visible `~/Downloads` directory for the extension. Files go to the app group. Open the Libby Downloader app and tap **Show Downloaded Books** to copy them into the Files app. If the app group entitlement is missing, Safari saves flat files instead.
 - Safari may ask before saving several files in a row when the fallback path is used.
 - The upstream command-line tagger and M4B merger are not part of this port. `metadata.json` is still written so that tool can be pointed at a finished folder.
