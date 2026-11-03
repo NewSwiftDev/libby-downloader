@@ -13,6 +13,7 @@ import { createMetadataGate } from './lib/metadata-gate.js';
 import { createNativeSaver } from './lib/native-saver.js';
 import { withTimeout } from './lib/page-fallback.js';
 import { describeSaveStrategy, detectBrowserName } from './lib/platform.js';
+import { pageFallbackReason } from './lib/chapter-urls.js';
 import { isAllowedChapterURL } from './lib/urls.js';
 import { validateBookData } from './lib/validators.js';
 
@@ -200,10 +201,10 @@ async function finish(tabId, result) {
 }
 
 async function requestFallback(tabId, book, startIndex, reason, source) {
-  const text = source ? `${source}: ${reason}` : reason;
+  const text = pageFallbackReason(reason);
   state.strategy = 'blob-fallback';
   state.detail = text;
-  console.error('[Libby Downloader] Native save failed; falling back to page downloads:', text);
+  console.error('[Libby Downloader] Native save failed; falling back to page downloads:', source || 'download', text);
   await notify(tabId, {
     type: MessageTypes.DOWNLOAD_FALLBACK,
     data: book,
@@ -306,7 +307,7 @@ async function handleStartDownload(bookData, tabId) {
         tabId,
         book,
         0,
-        `${decision.reason}; ${error instanceof Error ? error.message : 'Native ping failed'}`,
+        error instanceof Error ? error.message : 'Native ping failed',
         'ping'
       );
       return decisionResult('native', 'blob-fallback', reason, { fallback: true, startIndex: 0 });
@@ -316,7 +317,7 @@ async function handleStartDownload(bookData, tabId) {
         tabId,
         book,
         0,
-        `${decision.reason}; ${ping.error.message}`,
+        ping.error.message,
         'ping'
       );
       return decisionResult('native', 'blob-fallback', reason, { fallback: true, startIndex: 0 });
@@ -337,13 +338,7 @@ async function handleStartDownload(bookData, tabId) {
 
     if (result.fallback) {
       const chapterError = result.errors[result.errors.length - 1]?.error || 'native-save-failed';
-      const reason = await requestFallback(
-        tabId,
-        book,
-        result.completed,
-        `${decision.reason}; ${chapterError}`,
-        'chapter'
-      );
+      const reason = await requestFallback(tabId, book, result.completed, chapterError, 'chapter');
       return decisionResult('native', 'blob-fallback', reason, {
         fallback: true,
         startIndex: result.completed,

@@ -1,12 +1,14 @@
 /**
  * Player-frame extractor. Runs in the page MAIN world so it can read
- * window.BIF and Libby's crypto parameters. Safari needs version 18 or
- * newer for MAIN-world content scripts.
+ * window.BIF and the media URLs the player requests. Safari needs version
+ * 18 or newer for MAIN-world content scripts.
  * Ported from pdugan20/libby-downloader (MIT).
  * Copyright (c) 2026 libby-downloader contributors.
  */
 
 /*__INCLUDE web/lib/messages.js__*/
+/*__INCLUDE web/lib/urls.js__*/
+/*__INCLUDE web/lib/chapter-urls.js__*/
 
 console.log('[Libby Downloader] Iframe extractor loaded');
 
@@ -54,7 +56,11 @@ async function extractBookData() {
     throw new Error('BIF object not found. The audiobook player may not have loaded properly.');
   }
 
-  const odreadCmptParams = await waitForCryptoParams();
+  const components = BIF.objects?.spool?.components;
+  if (!Array.isArray(components) || components.length === 0) {
+    throw new Error('The audiobook has no audio parts.');
+  }
+
   const creators = BIF.map.creator ?? [];
   const authors = resolveAuthors(creators);
   const narrators = creators
@@ -73,15 +79,27 @@ async function extractBookData() {
     console.warn('[Libby Downloader] Could not extract cover URL:', error);
   }
 
+  const parts = components.map((spine, index) => ({
+    index,
+    spinePosition: spine.meta?.['-odread-spine-position'] ?? spine.spinePosition ?? index,
+    path: spine.meta?.path || '',
+    duration: spine.meta?.['audio-duration'] || spine.meta?.duration || spine.duration || 0,
+  }));
+  const gathered = await gatherPlayerUrls(BIF, parts);
+  const missing = gathered.filter((part) => part.source !== 'player');
+  if (missing.length > 0) {
+    throw new Error(missingPlayerUrlMessage(missing, gathered.length));
+  }
+
   const chapters = [];
   let cumulativeTime = 0;
-  for (const spine of BIF.objects.spool.components) {
-    const position = spine.meta['-odread-spine-position'];
-    const duration = spine.meta['audio-duration'] || spine.meta.duration || spine.duration || 0;
+  for (const part of gathered) {
+    const duration = part.duration || 0;
+    const position = part.spinePosition ?? part.index;
     chapters.push({
       index: position,
       title: `Part ${position + 1}`,
-      url: `${location.origin}/${spine.meta.path}?${odreadCmptParams[spine.spinePosition]}`,
+      url: part.url,
       duration,
       startTime: cumulativeTime,
     });
@@ -138,19 +156,73 @@ function extractCryptoParams(result, source) {
   const params = result.b?.['-odread-cmpt-params'];
   if (!params) return;
   window.__odreadCmptParams = Array.from(params);
-  console.log(`[Libby Downloader] Captured crypto parameters via ${source}`);
+  console.log(
+    `[Libby Downloader] Saw init crypto parameters via ${source}; chapter URLs come from the player`
+  );
 }
 
-async function waitForCryptoParams(timeoutMs = 5000, pollIntervalMs = 250) {
-  if (window.__odreadCmptParams) return window.__odreadCmptParams;
-  const maxAttempts = Math.ceil(timeoutMs / pollIntervalMs);
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await sleep(pollIntervalMs);
-    if (window.__odreadCmptParams) return window.__odreadCmptParams;
+function readPlayerResourceEntries() {
+  try {
+    return performance.getEntriesByType('resource');
+  } catch {
+    return [];
   }
-  throw new Error(
-    'Crypto parameters not captured. Please play the audiobook for a few seconds and try again.'
-  );
+}
+
+function seekPlayer(bif, floc) {
+  const compass = bif?.objects?.compass;
+  if (!compass || typeof compass.at !== 'function') return false;
+  try {
+    const place = compass.at({ floc });
+    if (place && typeof place.seek === 'function') {
+      place.seek();
+      return true;
+    }
+  } catch (error) {
+    console.warn('[Libby Downloader] Could not seek the player', error);
+  }
+  return false;
+}
+
+async function gatherPlayerUrls(bif, parts) {
+  const origFloc = bif.objects?.spool?.focus?.floc ?? 0;
+  let didSeek = false;
+  try {
+    return await collectPlayerChapterUrls({
+      parts,
+      readEntries: readPlayerResourceEntries,
+      sleep,
+      onProgress(event) {
+        console.log(
+          '[Libby Downloader] Reading player URL for chapter',
+          event.position,
+          'of',
+          event.total
+        );
+        window.parent.postMessage(
+          {
+            type: MessageTypes.EXTRACTION_PROGRESS,
+            data: {
+              completed: Math.max(0, event.position - 1),
+              total: event.total,
+              message: `Reading player URL for chapter ${event.position} of ${event.total}`,
+            },
+          },
+          '*'
+        );
+      },
+      seekToPart(part, total) {
+        const ordinal = parts.findIndex((item) => item.index === part.index);
+        const fraction = ordinal === total - 1 ? 0.25 : 0.5;
+        const floc = (part.spinePosition ?? part.index) + fraction;
+        const moved = seekPlayer(bif, floc);
+        if (moved) didSeek = true;
+        return moved;
+      },
+    });
+  } finally {
+    if (didSeek) seekPlayer(bif, origFloc);
+  }
 }
 
 function resolveAuthors(creators) {

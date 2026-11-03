@@ -9,6 +9,7 @@
 /*__INCLUDE web/lib/messages.js__*/
 /*__INCLUDE web/lib/paths.js__*/
 /*__INCLUDE web/lib/urls.js__*/
+/*__INCLUDE web/lib/chapter-urls.js__*/
 /*__INCLUDE web/lib/page-fallback.js__*/
 
 const ext = globalThis.browser ?? globalThis.chrome;
@@ -78,8 +79,8 @@ function showCompletionMessage(failedChapters, detail) {
     progressText.textContent = 'Download complete!';
     return;
   }
-  const suffix = detail ? ` Last: ${detail}` : '';
-  progressText.textContent = `Download failed: ${failedChapters} errors.${suffix}`.slice(0, 180);
+  const suffix = detail ? ` ${detail}` : '';
+  progressText.textContent = `Download failed: ${failedChapters} errors.${suffix}`.slice(0, 240);
 }
 
 function removeProgressOverlay() {
@@ -150,12 +151,18 @@ async function runBlobFallback(book, startIndex, reason) {
       }
       // credentials must stay 'omit'. listen.libbyapp.com redirects to
       // audioclips.cdn.overdrive.com, which replies with ACAO: *.
-      const response = await fetch(chapter.url, {
-        credentials: chapterFetchCredentials(),
-        redirect: 'follow',
+      const response = await fetchChapterResponse({
+        url: chapter.url,
+        index,
         signal,
+        sleep,
+        fetchImpl: (nextUrl, options) =>
+          fetch(nextUrl, {
+            credentials: chapterFetchCredentials(),
+            redirect: 'follow',
+            signal: options.signal,
+          }),
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const flatName = flatDownloadFilename(title, index);
       triggerBlobDownload(await response.blob(), flatName);
       const organized = await ext.runtime.sendMessage({
@@ -204,11 +211,7 @@ async function runBlobFallback(book, startIndex, reason) {
         'failed:',
         event.message
       );
-      updateProgressOverlay(
-        event.index,
-        event.total,
-        `Chapter ${event.index + 1} failed: ${event.message}`.slice(0, 180)
-      );
+      updateProgressOverlay(event.index, event.total, event.message.slice(0, 240));
     },
   });
 
@@ -273,7 +276,7 @@ if (ext?.runtime?.onMessage) {
     if (!message || message.type !== MessageTypes.DOWNLOAD_FALLBACK || !message.data) return;
     const startIndex = Number.isInteger(message.startIndex) ? message.startIndex : 0;
     console.error(
-      '[Libby Downloader] Native save did not finish:',
+      '[Libby Downloader] Chapter download failed:',
       message.reason || 'unknown reason'
     );
     startPageFallback(message.data, startIndex, message.reason);

@@ -16,6 +16,7 @@
 
 const MessageTypes = {
   EXTRACT_LIBBY_BOOK: 'EXTRACT_LIBBY_BOOK',
+  EXTRACTION_PROGRESS: 'EXTRACTION_PROGRESS',
   EXTRACTION_SUCCESS: 'EXTRACTION_SUCCESS',
   EXTRACTION_ERROR: 'EXTRACTION_ERROR',
   START_DOWNLOAD: 'START_DOWNLOAD',
@@ -167,9 +168,11 @@ function requestExtraction(iframe) {
   if (iframe.contentWindow) {
     iframe.contentWindow.postMessage({ type: MessageTypes.EXTRACT_LIBBY_BOOK }, iframeOrigin(iframe));
   }
+  // Seeking the player through every unread part can take longer than the
+  // old metadata-only extract. 31 parts at a short gap still fit in 3 minutes.
   extractionTimeout = window.setTimeout(() => {
-    showError('Extraction timed out. Play the audiobook for a few seconds, then try again.');
-  }, 10000);
+    showError('Could not read chapter URLs from the player. Play the audiobook for a few seconds, then try again.');
+  }, 180000);
 }
 
 function postFallbackToPlayer(book, startIndex, reason) {
@@ -247,6 +250,14 @@ function handleWindowMessage(event) {
 
   if (type === MessageTypes.LIBBY_DOWNLOADER_BUTTON_CLICKED) {
     handleButtonClick();
+    return;
+  }
+  if (type === MessageTypes.EXTRACTION_PROGRESS) {
+    updateState('downloading', {
+      completed: data?.completed || 0,
+      total: data?.total || 0,
+      message: data?.message || 'Reading player chapter URLs...',
+    });
     return;
   }
   if (type === MessageTypes.EXTRACTION_SUCCESS && data) {

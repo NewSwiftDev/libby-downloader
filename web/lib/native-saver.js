@@ -4,6 +4,7 @@
  * Copyright (c) 2026 libby-downloader contributors.
  */
 
+import { formatChapterFailure } from './chapter-urls.js';
 import { buildMetadataDocument } from './metadata.js';
 import {
   NATIVE_APPLICATION,
@@ -56,10 +57,10 @@ export function createNativeSaver(sendNative, { cookiesForUrl } = {}) {
       try {
         response = await sendNative(NATIVE_APPLICATION, message);
       } catch (error) {
-        throw nativeChannelError(error);
+        throw chapterSaveError(index, chapter.url, nativeChannelError(error));
       }
       const parsed = interpretNativeResponse(response);
-      if (!parsed.ok) throw parsed.error;
+      if (!parsed.ok) throw chapterSaveError(index, chapter.url, parsed.error);
       return { downloadId: index + 1, filepath: parsed.path, chapterIndex: index };
     },
 
@@ -110,5 +111,20 @@ function nativeChannelError(error) {
   const message = error instanceof Error && error.message ? error.message : 'native-channel';
   const wrapped = /** @type {Error & { fallback?: boolean }} */ (new Error(message));
   wrapped.fallback = true;
+  return wrapped;
+}
+
+/**
+ * @param {number} index
+ * @param {string} url
+ * @param {Error & { fallback?: boolean, status?: number, code?: string }} error
+ */
+function chapterSaveError(index, url, error) {
+  const wrapped = /** @type {Error & { fallback?: boolean, status?: number, code?: string }} */ (
+    new Error(formatChapterFailure(index, error, url))
+  );
+  wrapped.fallback = error.fallback;
+  wrapped.status = error.status;
+  wrapped.code = error.code;
   return wrapped;
 }
