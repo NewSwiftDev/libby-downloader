@@ -7,6 +7,8 @@
 
 /*__INCLUDE web/lib/messages.js__*/
 /*__INCLUDE web/lib/validators.js__*/
+/*__INCLUDE web/lib/urls.js__*/
+/*__INCLUDE web/lib/download-ack.js__*/
 
 const ext = globalThis.browser ?? globalThis.chrome;
 
@@ -64,7 +66,9 @@ function updateState(state, data) {
 }
 
 function showError(message) {
-  alert(`Libby Downloader: ${message}`);
+  const text = message || 'Download failed: no reason was provided';
+  console.error('[Libby Downloader]', text);
+  alert(`Libby Downloader: ${text}`);
   updateState('error');
 }
 
@@ -90,8 +94,8 @@ function requestExtraction(iframe) {
   // Seeking the player through every unread part can take longer than the
   // old metadata-only extract. 31 parts at a short gap still fit in 3 minutes.
   extractionTimeout = window.setTimeout(() => {
-    showError('Could not read chapter URLs from the player. Play the audiobook for a few seconds, then try again.');
-  }, 180000);
+    showError('Could not read the book from the player. Play the audiobook for a few seconds, then try again.');
+  }, 20000);
 }
 
 function postFallbackToPlayer(book, startIndex, reason) {
@@ -134,14 +138,27 @@ async function handleExtractionSuccess(bookData) {
     return;
   }
 
-  updateState('downloading', { completed: 0, total: bookData.chapters.length });
+  updateState('downloading', {
+    completed: 0,
+    total: bookData.chapters.length,
+    message: `Starting download of ${bookData.chapters.length} chapters`,
+  });
   try {
+    // The reply only means the save was accepted. Waiting here for every
+    // chapter kept the message channel open until Safari dropped it and the
+    // alert became "Download failed" with no reason.
     const response = await ext.runtime.sendMessage({
       type: MessageTypes.START_DOWNLOAD,
       data: bookData,
     });
-    if (!response?.success) {
-      throw new Error(response?.error || 'Download failed');
+    const failure = explainDownloadStartFailure(response);
+    if (failure) {
+      showError(failure);
+      return;
+    }
+    if (response.accepted) {
+      log('Download accepted. Each chapter asks the player for a fresh URL, then saves.');
+      return;
     }
     log(
       `Save decision: ${response.selected || '?'} → ${response.strategy || '?'}. ${response.reason || 'no reason provided'}`
@@ -154,7 +171,7 @@ async function handleExtractionSuccess(bookData) {
       );
     }
   } catch (error) {
-    showError(error instanceof Error ? error.message : 'Download failed');
+    showError(error instanceof Error ? error.message : 'Download failed: the extension message was rejected');
   }
 }
 
@@ -163,15 +180,90 @@ function handleExtractionError(error) {
   showError(`Extraction failed: ${error}`);
 }
 
+const pendingRefresh = new Map();
+
+function requestPlayerUrl(index, attempt = 0) {
+  const iframe = ui.iframe || findPlayerFrame();
+  if (iframe) setIframe(iframe);
+  if (!ui.iframe?.contentWindow) {
+    return Promise.resolve({
+      ok: false,
+      error: `Chapter ${index + 1}: the audiobook player is not open`,
+    });
+  }
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const pending = {
+      settled: false,
+      timer: 0,
+      frame: 0,
+      finish(result) {
+        if (pending.settled) return;
+        pending.settled = true;
+        clearTimeout(pending.timer);
+        if (pending.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pending.frame);
+        pendingRefresh.delete(index);
+        if (result?.ok && result.url) {
+          let file = '';
+          try {
+            file = decodeURIComponent(new URL(result.url).pathname.split('/').pop() || '');
+          } catch {
+            file = '';
+          }
+          console.log('[Libby Downloader]', `Received player URL for chapter ${index + 1} (${file || 'empty'})`);
+        } else {
+          console.error(
+            '[Libby Downloader]',
+            result?.error || `Chapter ${index + 1}: player URL was empty`
+          );
+        }
+        resolve(result);
+      },
+    };
+    const giveUp = () => {
+      pending.finish({
+        ok: false,
+        error: `Chapter ${index + 1}: timed out after 12000ms waiting for the player URL`,
+      });
+    };
+    const tick = () => {
+      if (!pendingRefresh.get(index) || pending.settled) return;
+      if (Date.now() - started >= 12000) {
+        giveUp();
+        return;
+      }
+      if (typeof requestAnimationFrame === 'function') pending.frame = requestAnimationFrame(tick);
+    };
+    pendingRefresh.set(index, pending);
+    pending.timer = setTimeout(giveUp, 12000);
+    if (typeof requestAnimationFrame === 'function') pending.frame = requestAnimationFrame(tick);
+    ui.iframe.contentWindow.postMessage(
+      { type: MessageTypes.REFRESH_CHAPTER_URL, index, attempt },
+      iframeOrigin(ui.iframe)
+    );
+  });
+}
+
 function handleWindowMessage(event) {
   if (!validateOrigin(event.origin)) return;
-  const { type, data, error, progress, result } = event.data || {};
+  const { type, data, error, progress, result, index } = event.data || {};
+  if (type === MessageTypes.REFRESH_CHAPTER_URL_RESULT) {
+    const pending = pendingRefresh.get(index);
+    if (!pending) return;
+    pending.finish({
+      ok: event.data.ok === true && isAllowedChapterURL(event.data.url),
+      url: event.data.url,
+      error: event.data.error || (event.data.url ? '' : `Chapter ${index + 1}: player URL is empty`),
+    });
+    return;
+  }
 
   if (type === MessageTypes.LIBBY_DOWNLOADER_BUTTON_CLICKED) {
     handleButtonClick();
     return;
   }
   if (type === MessageTypes.EXTRACTION_PROGRESS) {
+    log('Player', data?.message || '');
     updateState('downloading', {
       completed: data?.completed || 0,
       total: data?.total || 0,
@@ -209,12 +301,32 @@ function handleWindowMessage(event) {
 function handleBackgroundMessage(message) {
   if (!message || typeof message !== 'object') return;
   if (message.type === MessageTypes.DOWNLOAD_PROGRESS) {
-    log('Progress', message.progress?.completed ?? 0, 'of', message.progress?.total ?? 0);
+    log(
+      'Progress',
+      message.progress?.completed ?? 0,
+      'of',
+      message.progress?.total ?? 0,
+      message.progress?.message || ''
+    );
     updateState('downloading', message.progress);
     return;
   }
+  if (message.type === MessageTypes.CHAPTER_FAILED) {
+    const text = message.error || 'Chapter download failed';
+    console.error('[Libby Downloader]', text);
+    updateState('downloading', {
+      completed: message.progress?.completed ?? 0,
+      total: message.progress?.total ?? 0,
+      message: text,
+    });
+    return;
+  }
+  if (message.type === MessageTypes.DOWNLOAD_FAILED) {
+    showError(message.error || 'Download failed: no reason was provided');
+    return;
+  }
   if (message.type === MessageTypes.DOWNLOAD_FALLBACK && message.data) {
-    log('Background asked for page fallback:', message.reason || 'no reason provided');
+    console.error('[Libby Downloader] Page fallback:', message.reason || 'no reason provided');
     postFallbackToPlayer(
       message.data,
       Number.isInteger(message.startIndex) ? message.startIndex : 0,
@@ -223,10 +335,18 @@ function handleBackgroundMessage(message) {
     return;
   }
   if (message.type === MessageTypes.DOWNLOAD_COMPLETE) {
+    const failed = message.result?.failed ?? 0;
+    const detail = message.result?.detail || '';
+    if (failed > 0) {
+      const text = detail || `${failed} chapters failed`;
+      console.error('[Libby Downloader]', text);
+      alert(`Libby Downloader: ${failed} of ${message.result?.total ?? '?'} chapters failed. ${text}`);
+    }
     updateState('success', {
       completedChapters: message.result?.completed ?? 0,
-      failedChapters: message.result?.failed ?? 0,
+      failedChapters: failed,
       totalChapters: message.result?.total ?? 0,
+      detail,
     });
     resetAfterDelay();
   }
@@ -236,8 +356,20 @@ if (!window.location.pathname.includes('/open/loan/')) {
   log('Not an audiobook loan page');
 } else {
   window.addEventListener('message', handleWindowMessage);
-  ext.runtime.onMessage.addListener((message) => {
+  ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === MessageTypes.REFRESH_CHAPTER_URL) {
+      requestPlayerUrl(message.index, message.attempt)
+        .then((result) => sendResponse(result))
+        .catch((error) => {
+          sendResponse({
+            ok: false,
+            error: error instanceof Error ? error.message : 'Could not read the player URL',
+          });
+        });
+      return true;
+    }
     handleBackgroundMessage(message);
+    return false;
   });
   log('Ready');
 }

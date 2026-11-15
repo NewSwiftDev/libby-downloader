@@ -5,7 +5,9 @@
  * Copyright (c) 2026 libby-downloader contributors.
  */
 
-import { formatChapterFailure } from './chapter-urls.js';
+import { formatChapterFailure, withTimeout } from './chapter-urls.js';
+
+export { withTimeout };
 
 /** One retry. Keep in sync with DownloadStore.maxChapterAttempts. */
 export const CHAPTER_FETCH_ATTEMPTS = 2;
@@ -84,26 +86,6 @@ export async function fetchChapterResponse({ url, index, fetchImpl, signal, atte
     },
     { attempts, sleep }
   );
-}
-
-/**
- * @param {(signal: AbortSignal) => Promise<unknown>} work
- * @param {number} timeoutMs
- * @param {string} label
- */
-export function withTimeout(work, timeoutMs, label) {
-  const controller = new AbortController();
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-  const task = Promise.resolve()
-    .then(() => work(controller.signal))
-    .finally(() => clearTimeout(timer));
-  return Promise.race([task, timeout]);
 }
 
 /**

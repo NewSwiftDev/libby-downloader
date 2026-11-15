@@ -28,8 +28,61 @@ Response.prototype.json = async function () {
   return result;
 };
 
+const seenPartUrls = new Map();
+
+function noteSeen(url, partPath) {
+  if (!isSignedMediaUrl(url)) return;
+  const key = partFileKey(partPath) || partFileKey(url);
+  if (key) seenPartUrls.set(key, url);
+}
+
+function knownFor(part) {
+  mergePerformanceMediaUrls(seenPartUrls, readPlayerResourceEntries());
+  const src = readAudioSrc();
+  if (mediaUrlForPart(src, part.path)) noteSeen(src, part.path);
+  return findPlayerUrl(seenPartUrls, part.path);
+}
+
+function deliverPartResult(index, result) {
+  if (result && result.url) noteSeen(result.url, result.url);
+  const payload = { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result };
+  const file = result && result.url ? partFileKey(result.url) : '';
+  const line = file
+    ? `Sent player URL for chapter ${index + 1} to parent (${file})`
+    : `Chapter ${index + 1}: sent failure to parent (${(result && result.error) || 'no URL'})`;
+  console.log('[Libby Downloader]', line);
+  const channels = fanOutPlayerResult(payload, {
+    parent(message) {
+      window.parent.postMessage(message, '*');
+    },
+    frame(message) {
+      window.postMessage(message, '*');
+    },
+  });
+  if (!channels.sent.length) {
+    console.error(
+      '[Libby Downloader]',
+      `Chapter ${index + 1}: could not post the player URL (${channels.errors.join(', ') || 'no channel'})`
+    );
+  }
+}
+
 window.addEventListener('message', async (event) => {
-  if (!event.data || event.data.type !== MessageTypes.EXTRACT_LIBBY_BOOK) return;
+  const type = event.data?.type;
+  if (type === MessageTypes.REFRESH_CHAPTER_URL) {
+    const index = event.data.index;
+    try {
+      const attempt = Number.isInteger(event.data.attempt) ? event.data.attempt : 0;
+    const result = await refreshPart(index, attempt);
+      deliverPartResult(index, result);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Could not read the player URL';
+      console.error('[Libby Downloader]', errorMessage);
+      deliverPartResult(index, { ok: false, error: errorMessage });
+    }
+    return;
+  }
+  if (type !== MessageTypes.EXTRACT_LIBBY_BOOK) return;
 
   try {
     const bookData = await extractBookData();
@@ -79,17 +132,12 @@ async function extractBookData() {
     console.warn('[Libby Downloader] Could not extract cover URL:', error);
   }
 
-  const parts = components.map((spine, index) => ({
-    index,
-    spinePosition: spine.meta?.['-odread-spine-position'] ?? spine.spinePosition ?? index,
-    path: spine.meta?.path || '',
-    duration: spine.meta?.['audio-duration'] || spine.meta?.duration || spine.duration || 0,
-  }));
-  const gathered = await gatherPlayerUrls(BIF, parts);
-  const missing = gathered.filter((part) => part.source !== 'player');
-  if (missing.length > 0) {
-    throw new Error(missingPlayerUrlMessage(missing, gathered.length));
-  }
+  const parts = components.map((spine, index) => partFromSpine(spine, index));
+  // Already-buffered media URLs are hints only. Each file is signed again
+  // immediately before it is saved, because a 109-part seek finishes long
+  // before the later downloads.
+  prepareResourceTiming(typeof performance !== 'undefined' ? performance : null, parts.length * 5 + 250);
+  const gathered = urlsFromCurrentEntries(parts, readPlayerResourceEntries());
 
   const chapters = [];
   let cumulativeTime = 0;
@@ -161,12 +209,27 @@ function extractCryptoParams(result, source) {
   );
 }
 
+function partFromSpine(spine, index) {
+  return {
+    index,
+    spinePosition: spine.meta?.['-odread-spine-position'] ?? spine.spinePosition ?? index,
+    path: spine.meta?.path || '',
+    duration: spine.meta?.['audio-duration'] || spine.meta?.duration || spine.duration || 0,
+  };
+}
+
 function readPlayerResourceEntries() {
   try {
     return performance.getEntriesByType('resource');
   } catch {
     return [];
   }
+}
+
+function readAudioSrc() {
+  const media = document.querySelector('audio, video');
+  if (!media) return '';
+  return media.currentSrc || media.src || '';
 }
 
 function seekPlayer(bif, floc) {
@@ -184,45 +247,67 @@ function seekPlayer(bif, floc) {
   return false;
 }
 
-async function gatherPlayerUrls(bif, parts) {
-  const origFloc = bif.objects?.spool?.focus?.floc ?? 0;
-  let didSeek = false;
+function clearResourceTimings() {
   try {
-    return await collectPlayerChapterUrls({
-      parts,
-      readEntries: readPlayerResourceEntries,
-      sleep,
-      onProgress(event) {
-        console.log(
-          '[Libby Downloader] Reading player URL for chapter',
-          event.position,
-          'of',
-          event.total
-        );
-        window.parent.postMessage(
-          {
-            type: MessageTypes.EXTRACTION_PROGRESS,
-            data: {
-              completed: Math.max(0, event.position - 1),
-              total: event.total,
-              message: `Reading player URL for chapter ${event.position} of ${event.total}`,
-            },
-          },
-          '*'
-        );
-      },
-      seekToPart(part, total) {
-        const ordinal = parts.findIndex((item) => item.index === part.index);
-        const fraction = ordinal === total - 1 ? 0.25 : 0.5;
-        const floc = (part.spinePosition ?? part.index) + fraction;
-        const moved = seekPlayer(bif, floc);
-        if (moved) didSeek = true;
-        return moved;
-      },
-    });
-  } finally {
-    if (didSeek) seekPlayer(bif, origFloc);
+    if (typeof performance.clearResourceTimings === 'function') performance.clearResourceTimings();
+  } catch {
+    /* The next poll still checks the audio element src. */
   }
+}
+
+async function refreshPart(index, attempt = 0) {
+  const BIF = await getBIF();
+  if (!BIF) {
+    return { ok: false, error: 'BIF object not found. The audiobook player may not have loaded properly.' };
+  }
+  const components = BIF.objects?.spool?.components;
+  if (!Array.isArray(components) || !components[index]) {
+    return { ok: false, error: `Chapter ${index + 1}: that part is not in the player` };
+  }
+  const part = partFromSpine(components[index], index);
+  const total = components.length;
+  prepareResourceTiming(performance, total * 5 + 250);
+  const already = knownFor(part);
+  const report = (line) => {
+    console.log('[Libby Downloader]', line);
+    window.parent.postMessage(
+      {
+        type: MessageTypes.EXTRACTION_PROGRESS,
+        data: { completed: index, total, message: line },
+      },
+      '*'
+    );
+  };
+  if (!shouldSeekForUrl(already, attempt)) {
+    const ready = describeReadyChapter(index + 1, { url: already, source: 'cached' });
+    report(ready.line);
+    return { ok: true, url: already };
+  }
+  report(`Chapter ${index + 1}: no stored URL for ${partFileKey(part.path) || 'this part'}; seeking`);
+  clearResourceTimings();
+  const target = (part.spinePosition ?? index) + (index === total - 1 ? 0.25 : 0.5);
+  const away = index === 0 ? (total > 1 ? 1.5 : target) : Math.max(0, (part.spinePosition ?? index) - 1 + 0.5);
+  const found = await waitForPartUrl({
+    part,
+    knownUrl: already,
+    readEntries: readPlayerResourceEntries,
+    readAudioSrc,
+    sleep,
+    waitMs: 2500,
+    seek() {
+      return seekPlayer(BIF, target);
+    },
+    seekAway() {
+      return seekPlayer(BIF, away);
+    },
+  });
+  const ready = describeReadyChapter(index + 1, found);
+  if (!ready.ready) {
+    console.error('[Libby Downloader]', ready.line);
+    return { ok: false, error: ready.line };
+  }
+  report(ready.line);
+  return { ok: true, url: found.url };
 }
 
 function resolveAuthors(creators) {

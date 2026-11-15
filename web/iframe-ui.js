@@ -253,6 +253,31 @@ async function runBlobFallback(book, startIndex, reason) {
 window.addEventListener('message', (event) => {
   if (!event.data || typeof event.data !== 'object' || !event.data.type) return;
   const { type, state, data } = event.data;
+  if (type === MessageTypes.REFRESH_CHAPTER_URL_RESULT || type === MessageTypes.PLAYER_URL_READY) {
+    const index = Number.isInteger(event.data.index) ? event.data.index : 0;
+    const file = partFileKey(event.data.url || '');
+    console.log(
+      '[Libby Downloader]',
+      `Forwarded player URL for chapter ${index + 1} to the extension (${file || event.data.error || 'empty'})`
+    );
+    if (ext?.runtime?.sendMessage) {
+      ext.runtime
+        .sendMessage({
+          type: MessageTypes.PLAYER_URL_READY,
+          index,
+          ok: event.data.ok === true,
+          url: event.data.url,
+          error: event.data.error,
+        })
+        .catch((error) => {
+          console.error(
+            '[Libby Downloader]',
+            `Chapter ${index + 1}: could not tell the extension (${error instanceof Error ? error.message : 'send failed'})`
+          );
+        });
+    }
+    return;
+  }
   if (type === MessageTypes.UPDATE_PROGRESS_UI) {
     if (state === 'extracting') {
       createProgressOverlay();
