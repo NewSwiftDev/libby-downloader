@@ -8,7 +8,6 @@
 /*__INCLUDE web/lib/messages.js__*/
 /*__INCLUDE web/lib/validators.js__*/
 /*__INCLUDE web/lib/urls.js__*/
-/*__INCLUDE web/lib/chapter-urls.js__*/
 /*__INCLUDE web/lib/download-ack.js__*/
 
 const ext = globalThis.browser ?? globalThis.chrome;
@@ -205,10 +204,13 @@ function requestPlayerUrl(index, attempt = 0) {
         if (pending.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pending.frame);
         pendingRefresh.delete(index);
         if (result?.ok && result.url) {
-          console.log(
-            '[Libby Downloader]',
-            `Received player URL for chapter ${index + 1} (${partFileKey(result.url)})`
-          );
+          let file = '';
+          try {
+            file = decodeURIComponent(new URL(result.url).pathname.split('/').pop() || '');
+          } catch {
+            file = '';
+          }
+          console.log('[Libby Downloader]', `Received player URL for chapter ${index + 1} (${file || 'empty'})`);
         } else {
           console.error(
             '[Libby Downloader]',
@@ -226,7 +228,7 @@ function requestPlayerUrl(index, attempt = 0) {
     };
     const tick = () => {
       if (!pendingRefresh.get(index) || pending.settled) return;
-      if (refreshTimedOut(started, Date.now(), 12000)) {
+      if (Date.now() - started >= 12000) {
         giveUp();
         return;
       }

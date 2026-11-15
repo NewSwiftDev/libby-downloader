@@ -92,19 +92,6 @@ export function findPlayerUrl(map, partPath) {
 }
 
 /**
- * True when a wait has run long enough. Callers check this from
- * animation frames, because Safari may not run setTimeout while a
- * message or a player seek is outstanding.
- * @param {number} startedAt
- * @param {number} now
- * @param {number} limitMs
- * @returns {boolean}
- */
-export function refreshTimedOut(startedAt, now, limitMs) {
-  return typeof startedAt === 'number' && typeof now === 'number' && now - startedAt >= limitMs;
-}
-
-/**
  * Post a result on every channel. One throw must not skip the others.
  * @param {unknown} payload
  * @param {Record<string, (payload: unknown) => void>} targets

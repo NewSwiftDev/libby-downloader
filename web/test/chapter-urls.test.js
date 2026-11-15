@@ -12,7 +12,6 @@ import {
   mediaUrlForPart,
   pageFallbackReason,
   partFileKey,
-  refreshTimedOut,
   shouldSeekForUrl,
   waitForPartUrl,
 } from '../lib/chapter-urls.js';
@@ -217,12 +216,6 @@ describe('player chapter URLs', () => {
     assert.deepEqual(result.sent, ['parent']);
     assert.equal(posts.length, 1);
     assert.equal(posts[0].url, playerUrl);
-  });
-
-  it('decides a refresh deadline from the clock, not from a timer firing', () => {
-    const started = 1_000;
-    assert.equal(refreshTimedOut(started, started + 11999, 12000), false);
-    assert.equal(refreshTimedOut(started, started + 12000, 12000), true);
   });
 
   it('refuses an empty player URL instead of logging ready', () => {
