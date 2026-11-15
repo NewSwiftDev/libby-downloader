@@ -27,6 +27,7 @@ const MessageTypes = {
   CHAPTER_FAILED: 'CHAPTER_FAILED',
   REFRESH_CHAPTER_URL: 'REFRESH_CHAPTER_URL',
   REFRESH_CHAPTER_URL_RESULT: 'REFRESH_CHAPTER_URL_RESULT',
+  PLAYER_URL_READY: 'PLAYER_URL_READY',
   DOWNLOAD_FALLBACK: 'DOWNLOAD_FALLBACK',
   GET_DOWNLOAD_STATUS: 'GET_DOWNLOAD_STATUS',
   GET_STATE: 'GET_STATE',
@@ -181,10 +182,97 @@ function mergePerformanceMediaUrls(map, entries) {
  * @returns {string}
  */
 function capturedUrlForPart(map, path) {
-  const key = partFileKey(path);
-  if (!key) return '';
-  const url = map.get(key);
-  return typeof url === 'string' ? url : '';
+  return findPlayerUrl(map, path);
+}
+
+/**
+ * Match a spine path to a player filename. Libby often requests
+ * `{uuid}Fmt425-Part22.mp3` while the spine path is only the tail.
+ * @param {Map<string, string>} map
+ * @param {unknown} partPath
+ * @returns {string}
+ */
+function findPlayerUrl(map, partPath) {
+  const file = partFileKey(partPath);
+  if (!file || !map || typeof map.get !== 'function') return '';
+  const exact = map.get(file);
+  if (typeof exact === 'string' && isSignedMediaUrl(exact)) return exact;
+  for (const [key, url] of map) {
+    if (typeof key !== 'string' || typeof url !== 'string' || !isSignedMediaUrl(url)) continue;
+    if (key.endsWith(file) || file.endsWith(key)) return url;
+  }
+  return '';
+}
+
+/**
+ * True when a wait has run long enough. Callers check this from
+ * animation frames, because Safari may not run setTimeout while a
+ * message or a player seek is outstanding.
+ * @param {number} startedAt
+ * @param {number} now
+ * @param {number} limitMs
+ * @returns {boolean}
+ */
+function refreshTimedOut(startedAt, now, limitMs) {
+  return typeof startedAt === 'number' && typeof now === 'number' && now - startedAt >= limitMs;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} url
+ * @returns {string}
+ */
+function sentPlayerUrlLine(index, url) {
+  return `Sent player URL for chapter ${index + 1} to parent (${partFileKey(url) || 'empty'})`;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} url
+ * @returns {string}
+ */
+function receivedPlayerUrlLine(index, url) {
+  return `Received player URL for chapter ${index + 1} (${partFileKey(url) || 'empty'})`;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} url
+ * @returns {string}
+ */
+function forwardedPlayerUrlLine(index, url) {
+  return `Forwarded player URL for chapter ${index + 1} to the extension (${partFileKey(url) || 'empty'})`;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} path
+ * @returns {string}
+ */
+function noStoredUrlLine(index, path) {
+  return `Chapter ${index + 1}: no stored URL for ${partFileKey(path) || 'this part'}; seeking`;
+}
+
+/**
+ * Post a result on every channel. One throw must not skip the others.
+ * @param {unknown} payload
+ * @param {Record<string, (payload: unknown) => void>} targets
+ * @returns {{ sent: string[], errors: string[] }}
+ */
+function fanOutPlayerResult(payload, targets) {
+  const sent = [];
+  const errors = [];
+  if (!targets || typeof targets !== 'object') return { sent, errors };
+  for (const [name, post] of Object.entries(targets)) {
+    if (typeof post !== 'function') continue;
+    try {
+      post(payload);
+      sent.push(name);
+    } catch {
+      errors.push(name);
+    }
+  }
+  return { sent, errors };
 }
 
 /**
@@ -550,13 +638,42 @@ Response.prototype.json = async function () {
   return result;
 };
 
-function replyTo(event, payload) {
-  const target = event.source;
-  if (target && typeof target.postMessage === 'function') {
-    target.postMessage(payload, '*');
-    return;
+const seenPartUrls = new Map();
+
+function noteSeen(url, partPath) {
+  if (!isSignedMediaUrl(url)) return;
+  const key = partFileKey(partPath) || partFileKey(url);
+  if (key) seenPartUrls.set(key, url);
+}
+
+function knownFor(part) {
+  mergePerformanceMediaUrls(seenPartUrls, readPlayerResourceEntries());
+  const src = readAudioSrc();
+  if (mediaUrlForPart(src, part.path)) noteSeen(src, part.path);
+  return findPlayerUrl(seenPartUrls, part.path);
+}
+
+function deliverPartResult(index, result) {
+  if (result && result.url) noteSeen(result.url, result.url);
+  const payload = { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result };
+  const line = result && result.url
+    ? sentPlayerUrlLine(index, result.url)
+    : `Chapter ${index + 1}: sent failure to parent (${(result && result.error) || 'no URL'})`;
+  console.log('[Libby Downloader]', line);
+  const channels = fanOutPlayerResult(payload, {
+    parent(message) {
+      window.parent.postMessage(message, '*');
+    },
+    frame(message) {
+      window.postMessage(message, '*');
+    },
+  });
+  if (!channels.sent.length) {
+    console.error(
+      '[Libby Downloader]',
+      `Chapter ${index + 1}: could not post the player URL (${channels.errors.join(', ') || 'no channel'})`
+    );
   }
-  window.parent.postMessage(payload, '*');
 }
 
 window.addEventListener('message', async (event) => {
@@ -566,16 +683,11 @@ window.addEventListener('message', async (event) => {
     try {
       const attempt = Number.isInteger(event.data.attempt) ? event.data.attempt : 0;
     const result = await refreshPart(index, attempt);
-      replyTo(event, { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result });
+      deliverPartResult(index, result);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Could not read the player URL';
       console.error('[Libby Downloader]', errorMessage);
-      replyTo(event, {
-        type: MessageTypes.REFRESH_CHAPTER_URL_RESULT,
-        index,
-        ok: false,
-        error: errorMessage,
-      });
+      deliverPartResult(index, { ok: false, error: errorMessage });
     }
     return;
   }
@@ -764,9 +876,12 @@ async function refreshPart(index, attempt = 0) {
   const part = partFromSpine(components[index], index);
   const total = components.length;
   prepareResourceTiming(performance, total * 5 + 250);
-  const already =
-    mediaUrlForPart(readAudioSrc(), part.path) ||
-    capturedUrlForPart(mergePerformanceMediaUrls(new Map(), readPlayerResourceEntries()), part.path);
+  const already = knownFor(part);
+  if (!shouldSeekForUrl(already, attempt)) {
+    /* logged below */
+  } else {
+    console.log('[Libby Downloader]', noStoredUrlLine(index, part.path));
+  }
   console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
   const report = (line) => {
     console.log('[Libby Downloader]', line);

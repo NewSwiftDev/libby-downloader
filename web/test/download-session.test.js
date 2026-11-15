@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   downloadChaptersRefreshingUrls,
   isNativeChannelFailure,
+  settleFirst,
   shouldRefreshAgain,
 } from '../lib/download-session.js';
 
@@ -96,6 +97,17 @@ describe('per-chapter fresh URLs', () => {
     assert.equal(result.failed, 1);
     assert.equal(result.fallback, false);
     assert.equal(errors[0], 'Chapter 1: HTTP 500 from dewey.listen.libbyapp.com (a.mp3)');
+  });
+
+  it('uses a direct reply when the page message never resolves, and times out when neither does', async () => {
+    const direct = new Promise(() => {});
+    const page = new Promise(() => {});
+    const raced = await settleFirst(
+      [direct, Promise.resolve({ ok: true, url: 'https://listen.libbyapp.com/a.mp3?cmpt=1' })],
+      5000
+    );
+    assert.equal(raced.ok, true);
+    await assert.rejects(settleFirst([page], 20), /timed out after 20ms/);
   });
 
   it('gives up on a save that never finishes and continues with the next chapter', async () => {

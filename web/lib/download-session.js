@@ -14,6 +14,52 @@ export const PLAYER_URL_DEADLINE_MS = 20000;
 export const SAVE_DEADLINE_MS = 50000;
 
 /**
+ * First successful reply wins. A rejection from one channel (the page
+ * message that never returns) does not cancel the other. If every channel
+ * fails, or the deadline passes, the wait ends with a timeout error.
+ * @param {Array<Promise<unknown>>} promises
+ * @param {number} timeoutMs
+ * @returns {Promise<unknown>}
+ */
+export function settleFirst(promises, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let pending = promises.length;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    const timer = setTimeout(() => {
+      const error = /** @type {Error & { timedOut?: boolean, fallback?: boolean }} */ (
+        new Error(`timed out after ${timeoutMs}ms`)
+      );
+      error.timedOut = true;
+      error.fallback = false;
+      finish(reject, error);
+    }, timeoutMs);
+    if (!pending) return;
+    for (const promise of promises) {
+      Promise.resolve(promise).then(
+        (value) => finish(resolve, value),
+        () => {
+          pending -= 1;
+          if (pending === 0) {
+            const error = /** @type {Error & { timedOut?: boolean, fallback?: boolean }} */ (
+              new Error(`timed out after ${timeoutMs}ms`)
+            );
+            error.timedOut = true;
+            error.fallback = false;
+            finish(reject, error);
+          }
+        }
+      );
+    }
+  });
+}
+
+/**
  * Race work against sleep. A late resolution cannot unblock a wait that
  * already moved on, and it cannot leave the chapter loop sitting silently.
  * @template T
@@ -116,6 +162,7 @@ export async function downloadChaptersRefreshingUrls({
   const total = chapters.length;
 
   for (let index = 0; index < total; index++) {
+    try {
     if (onBeforeChapter) await onBeforeChapter(index, total);
     let saved = false;
     /** @type {Error & { status?: number, fallback?: boolean }} */
@@ -186,6 +233,11 @@ export async function downloadChaptersRefreshingUrls({
       if (delayMs > 0 && index < total - 1) await sleep(delayMs);
     } else {
       const message = lastError.message || `Chapter ${index + 1}: download failed`;
+      errors.push({ chapterIndex: index, error: message });
+      if (onChapterError) await onChapterError({ index, message });
+    }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `Chapter ${index + 1}: download failed`;
       errors.push({ chapterIndex: index, error: message });
       if (onChapterError) await onChapterError({ index, message });
     }

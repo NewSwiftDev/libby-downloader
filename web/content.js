@@ -7,6 +7,8 @@
 
 /*__INCLUDE web/lib/messages.js__*/
 /*__INCLUDE web/lib/validators.js__*/
+/*__INCLUDE web/lib/urls.js__*/
+/*__INCLUDE web/lib/chapter-urls.js__*/
 /*__INCLUDE web/lib/download-ack.js__*/
 
 const ext = globalThis.browser ?? globalThis.chrome;
@@ -191,13 +193,46 @@ function requestPlayerUrl(index, attempt = 0) {
     });
   }
   return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      pendingRefresh.delete(index);
-      const error = `Chapter ${index + 1}: timed out after 12000ms waiting for the player URL`;
-      console.error('[Libby Downloader]', error);
-      resolve({ ok: false, error });
-    }, 12000);
-    pendingRefresh.set(index, { resolve, timer });
+    const started = Date.now();
+    const pending = {
+      settled: false,
+      timer: 0,
+      frame: 0,
+      finish(result) {
+        if (pending.settled) return;
+        pending.settled = true;
+        clearTimeout(pending.timer);
+        if (pending.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pending.frame);
+        pendingRefresh.delete(index);
+        if (result?.ok && result.url) {
+          console.log('[Libby Downloader]', receivedPlayerUrlLine(index, result.url));
+        } else {
+          console.error(
+            '[Libby Downloader]',
+            result?.error || `Chapter ${index + 1}: player URL was empty`
+          );
+        }
+        resolve(result);
+      },
+    };
+    const giveUp = () => {
+      pending.finish({
+        ok: false,
+        error: `Chapter ${index + 1}: timed out after 12000ms waiting for the player URL`,
+      });
+    };
+    const tick = () => {
+      if (!pendingRefresh.get(index) || pending.settled) return;
+      if (refreshTimedOut(started, Date.now(), 12000)) {
+        giveUp();
+        return;
+      }
+      if (typeof requestAnimationFrame === 'function') pending.frame = requestAnimationFrame(tick);
+    };
+    pendingRefresh.set(index, pending);
+    pending.timer = setTimeout(giveUp, 12000);
+    if (typeof requestAnimationFrame === 'function') pending.frame = requestAnimationFrame(tick);
+    console.log('[Libby Downloader]', `Asked the player for chapter ${index + 1}`);
     ui.iframe.contentWindow.postMessage(
       { type: MessageTypes.REFRESH_CHAPTER_URL, index, attempt },
       iframeOrigin(ui.iframe)
@@ -211,12 +246,10 @@ function handleWindowMessage(event) {
   if (type === MessageTypes.REFRESH_CHAPTER_URL_RESULT) {
     const pending = pendingRefresh.get(index);
     if (!pending) return;
-    clearTimeout(pending.timer);
-    pendingRefresh.delete(index);
-    pending.resolve({
-      ok: event.data.ok === true,
+    pending.finish({
+      ok: event.data.ok === true && isAllowedChapterURL(event.data.url),
       url: event.data.url,
-      error: event.data.error,
+      error: event.data.error || (event.data.url ? '' : `Chapter ${index + 1}: player URL is empty`),
     });
     return;
   }
@@ -226,6 +259,7 @@ function handleWindowMessage(event) {
     return;
   }
   if (type === MessageTypes.EXTRACTION_PROGRESS) {
+    log('Player', data?.message || '');
     updateState('downloading', {
       completed: data?.completed || 0,
       total: data?.total || 0,

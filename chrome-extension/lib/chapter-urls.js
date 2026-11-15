@@ -73,10 +73,97 @@ export function mergePerformanceMediaUrls(map, entries) {
  * @returns {string}
  */
 export function capturedUrlForPart(map, path) {
-  const key = partFileKey(path);
-  if (!key) return '';
-  const url = map.get(key);
-  return typeof url === 'string' ? url : '';
+  return findPlayerUrl(map, path);
+}
+
+/**
+ * Match a spine path to a player filename. Libby often requests
+ * `{uuid}Fmt425-Part22.mp3` while the spine path is only the tail.
+ * @param {Map<string, string>} map
+ * @param {unknown} partPath
+ * @returns {string}
+ */
+export function findPlayerUrl(map, partPath) {
+  const file = partFileKey(partPath);
+  if (!file || !map || typeof map.get !== 'function') return '';
+  const exact = map.get(file);
+  if (typeof exact === 'string' && isSignedMediaUrl(exact)) return exact;
+  for (const [key, url] of map) {
+    if (typeof key !== 'string' || typeof url !== 'string' || !isSignedMediaUrl(url)) continue;
+    if (key.endsWith(file) || file.endsWith(key)) return url;
+  }
+  return '';
+}
+
+/**
+ * True when a wait has run long enough. Callers check this from
+ * animation frames, because Safari may not run setTimeout while a
+ * message or a player seek is outstanding.
+ * @param {number} startedAt
+ * @param {number} now
+ * @param {number} limitMs
+ * @returns {boolean}
+ */
+export function refreshTimedOut(startedAt, now, limitMs) {
+  return typeof startedAt === 'number' && typeof now === 'number' && now - startedAt >= limitMs;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} url
+ * @returns {string}
+ */
+export function sentPlayerUrlLine(index, url) {
+  return `Sent player URL for chapter ${index + 1} to parent (${partFileKey(url) || 'empty'})`;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} url
+ * @returns {string}
+ */
+export function receivedPlayerUrlLine(index, url) {
+  return `Received player URL for chapter ${index + 1} (${partFileKey(url) || 'empty'})`;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} url
+ * @returns {string}
+ */
+export function forwardedPlayerUrlLine(index, url) {
+  return `Forwarded player URL for chapter ${index + 1} to the extension (${partFileKey(url) || 'empty'})`;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} path
+ * @returns {string}
+ */
+export function noStoredUrlLine(index, path) {
+  return `Chapter ${index + 1}: no stored URL for ${partFileKey(path) || 'this part'}; seeking`;
+}
+
+/**
+ * Post a result on every channel. One throw must not skip the others.
+ * @param {unknown} payload
+ * @param {Record<string, (payload: unknown) => void>} targets
+ * @returns {{ sent: string[], errors: string[] }}
+ */
+export function fanOutPlayerResult(payload, targets) {
+  const sent = [];
+  const errors = [];
+  if (!targets || typeof targets !== 'object') return { sent, errors };
+  for (const [name, post] of Object.entries(targets)) {
+    if (typeof post !== 'function') continue;
+    try {
+      post(payload);
+      sent.push(name);
+    } catch {
+      errors.push(name);
+    }
+  }
+  return { sent, errors };
 }
 
 /**

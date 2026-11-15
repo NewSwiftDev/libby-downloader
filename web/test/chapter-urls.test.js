@@ -7,7 +7,14 @@ import { explainDownloadStartFailure } from '../lib/download-ack.js';
 import {
   collectPlayerChapterUrls,
   describeReadyChapter,
+  fanOutPlayerResult,
+  findPlayerUrl,
+  forwardedPlayerUrlLine,
   isSignedMediaUrl,
+  noStoredUrlLine,
+  receivedPlayerUrlLine,
+  refreshTimedOut,
+  sentPlayerUrlLine,
   mediaUrlForPart,
   missingPlayerUrlMessage,
   pageFallbackReason,
@@ -227,6 +234,40 @@ describe('player chapter URLs', () => {
     assert.equal(shouldSeekForUrl(prefetched, 1), true);
     assert.equal(shouldSeekForUrl('', 0), true);
     assert.equal(seeks >= 1, true);
+  });
+
+  it('matches a UUID player filename to a shorter spine path and survives a cleared buffer', () => {
+    const full = '{39CCD9C4-811C-472E-A5B8-BDCD69C95CA2}Fmt425-Part22.mp3';
+    const url = `https://${host}/${encodeURIComponent(full)}?cmpt=fresh`;
+    const map = new Map([[full, url]]);
+    assert.equal(findPlayerUrl(map, 'Fmt425-Part22.mp3'), url);
+    assert.equal(findPlayerUrl(map, full), url);
+    assert.match(noStoredUrlLine(21, full), /Chapter 22: no stored URL/);
+    assert.match(noStoredUrlLine(21, full), /Fmt425-Part22\.mp3/);
+  });
+
+  it('posts the player URL to the parent even when event.source throws', () => {
+    const posts = [];
+    const result = fanOutPlayerResult({ ok: true, url: playerUrl }, {
+      source() {
+        throw new Error('Safari event.source');
+      },
+      parent(payload) {
+        posts.push(payload);
+      },
+    });
+    assert.deepEqual(result.errors, ['source']);
+    assert.deepEqual(result.sent, ['parent']);
+    assert.equal(posts.length, 1);
+    assert.match(sentPlayerUrlLine(21, playerUrl), /Sent player URL for chapter 22 to parent/);
+    assert.match(receivedPlayerUrlLine(21, playerUrl), /Received player URL for chapter 22/);
+    assert.match(forwardedPlayerUrlLine(21, playerUrl), /Forwarded player URL for chapter 22 to the extension/);
+  });
+
+  it('decides a refresh deadline from the clock, not from a timer firing', () => {
+    const started = 1_000;
+    assert.equal(refreshTimedOut(started, started + 11999, 12000), false);
+    assert.equal(refreshTimedOut(started, started + 12000, 12000), true);
   });
 
   it('refuses an empty player URL instead of logging ready', () => {

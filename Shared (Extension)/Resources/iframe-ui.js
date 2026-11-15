@@ -27,6 +27,7 @@ const MessageTypes = {
   CHAPTER_FAILED: 'CHAPTER_FAILED',
   REFRESH_CHAPTER_URL: 'REFRESH_CHAPTER_URL',
   REFRESH_CHAPTER_URL_RESULT: 'REFRESH_CHAPTER_URL_RESULT',
+  PLAYER_URL_READY: 'PLAYER_URL_READY',
   DOWNLOAD_FALLBACK: 'DOWNLOAD_FALLBACK',
   GET_DOWNLOAD_STATUS: 'GET_DOWNLOAD_STATUS',
   GET_STATE: 'GET_STATE',
@@ -269,10 +270,97 @@ function mergePerformanceMediaUrls(map, entries) {
  * @returns {string}
  */
 function capturedUrlForPart(map, path) {
-  const key = partFileKey(path);
-  if (!key) return '';
-  const url = map.get(key);
-  return typeof url === 'string' ? url : '';
+  return findPlayerUrl(map, path);
+}
+
+/**
+ * Match a spine path to a player filename. Libby often requests
+ * `{uuid}Fmt425-Part22.mp3` while the spine path is only the tail.
+ * @param {Map<string, string>} map
+ * @param {unknown} partPath
+ * @returns {string}
+ */
+function findPlayerUrl(map, partPath) {
+  const file = partFileKey(partPath);
+  if (!file || !map || typeof map.get !== 'function') return '';
+  const exact = map.get(file);
+  if (typeof exact === 'string' && isSignedMediaUrl(exact)) return exact;
+  for (const [key, url] of map) {
+    if (typeof key !== 'string' || typeof url !== 'string' || !isSignedMediaUrl(url)) continue;
+    if (key.endsWith(file) || file.endsWith(key)) return url;
+  }
+  return '';
+}
+
+/**
+ * True when a wait has run long enough. Callers check this from
+ * animation frames, because Safari may not run setTimeout while a
+ * message or a player seek is outstanding.
+ * @param {number} startedAt
+ * @param {number} now
+ * @param {number} limitMs
+ * @returns {boolean}
+ */
+function refreshTimedOut(startedAt, now, limitMs) {
+  return typeof startedAt === 'number' && typeof now === 'number' && now - startedAt >= limitMs;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} url
+ * @returns {string}
+ */
+function sentPlayerUrlLine(index, url) {
+  return `Sent player URL for chapter ${index + 1} to parent (${partFileKey(url) || 'empty'})`;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} url
+ * @returns {string}
+ */
+function receivedPlayerUrlLine(index, url) {
+  return `Received player URL for chapter ${index + 1} (${partFileKey(url) || 'empty'})`;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} url
+ * @returns {string}
+ */
+function forwardedPlayerUrlLine(index, url) {
+  return `Forwarded player URL for chapter ${index + 1} to the extension (${partFileKey(url) || 'empty'})`;
+}
+
+/**
+ * @param {number} index
+ * @param {unknown} path
+ * @returns {string}
+ */
+function noStoredUrlLine(index, path) {
+  return `Chapter ${index + 1}: no stored URL for ${partFileKey(path) || 'this part'}; seeking`;
+}
+
+/**
+ * Post a result on every channel. One throw must not skip the others.
+ * @param {unknown} payload
+ * @param {Record<string, (payload: unknown) => void>} targets
+ * @returns {{ sent: string[], errors: string[] }}
+ */
+function fanOutPlayerResult(payload, targets) {
+  const sent = [];
+  const errors = [];
+  if (!targets || typeof targets !== 'object') return { sent, errors };
+  for (const [name, post] of Object.entries(targets)) {
+    if (typeof post !== 'function') continue;
+    try {
+      post(payload);
+      sent.push(name);
+    } catch {
+      errors.push(name);
+    }
+  }
+  return { sent, errors };
 }
 
 /**
@@ -1024,6 +1112,27 @@ async function runBlobFallback(book, startIndex, reason) {
 window.addEventListener('message', (event) => {
   if (!event.data || typeof event.data !== 'object' || !event.data.type) return;
   const { type, state, data } = event.data;
+  if (type === MessageTypes.REFRESH_CHAPTER_URL_RESULT || type === MessageTypes.PLAYER_URL_READY) {
+    const index = Number.isInteger(event.data.index) ? event.data.index : 0;
+    console.log('[Libby Downloader]', forwardedPlayerUrlLine(index, event.data.url || ''));
+    if (ext?.runtime?.sendMessage) {
+      ext.runtime
+        .sendMessage({
+          type: MessageTypes.PLAYER_URL_READY,
+          index,
+          ok: event.data.ok === true,
+          url: event.data.url,
+          error: event.data.error,
+        })
+        .catch((error) => {
+          console.error(
+            '[Libby Downloader]',
+            `Chapter ${index + 1}: could not tell the extension (${error instanceof Error ? error.message : 'send failed'})`
+          );
+        });
+    }
+    return;
+  }
   if (type === MessageTypes.UPDATE_PROGRESS_UI) {
     if (state === 'extracting') {
       createProgressOverlay();

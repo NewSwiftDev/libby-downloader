@@ -28,13 +28,42 @@ Response.prototype.json = async function () {
   return result;
 };
 
-function replyTo(event, payload) {
-  const target = event.source;
-  if (target && typeof target.postMessage === 'function') {
-    target.postMessage(payload, '*');
-    return;
+const seenPartUrls = new Map();
+
+function noteSeen(url, partPath) {
+  if (!isSignedMediaUrl(url)) return;
+  const key = partFileKey(partPath) || partFileKey(url);
+  if (key) seenPartUrls.set(key, url);
+}
+
+function knownFor(part) {
+  mergePerformanceMediaUrls(seenPartUrls, readPlayerResourceEntries());
+  const src = readAudioSrc();
+  if (mediaUrlForPart(src, part.path)) noteSeen(src, part.path);
+  return findPlayerUrl(seenPartUrls, part.path);
+}
+
+function deliverPartResult(index, result) {
+  if (result && result.url) noteSeen(result.url, result.url);
+  const payload = { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result };
+  const line = result && result.url
+    ? sentPlayerUrlLine(index, result.url)
+    : `Chapter ${index + 1}: sent failure to parent (${(result && result.error) || 'no URL'})`;
+  console.log('[Libby Downloader]', line);
+  const channels = fanOutPlayerResult(payload, {
+    parent(message) {
+      window.parent.postMessage(message, '*');
+    },
+    frame(message) {
+      window.postMessage(message, '*');
+    },
+  });
+  if (!channels.sent.length) {
+    console.error(
+      '[Libby Downloader]',
+      `Chapter ${index + 1}: could not post the player URL (${channels.errors.join(', ') || 'no channel'})`
+    );
   }
-  window.parent.postMessage(payload, '*');
 }
 
 window.addEventListener('message', async (event) => {
@@ -44,16 +73,11 @@ window.addEventListener('message', async (event) => {
     try {
       const attempt = Number.isInteger(event.data.attempt) ? event.data.attempt : 0;
     const result = await refreshPart(index, attempt);
-      replyTo(event, { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result });
+      deliverPartResult(index, result);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Could not read the player URL';
       console.error('[Libby Downloader]', errorMessage);
-      replyTo(event, {
-        type: MessageTypes.REFRESH_CHAPTER_URL_RESULT,
-        index,
-        ok: false,
-        error: errorMessage,
-      });
+      deliverPartResult(index, { ok: false, error: errorMessage });
     }
     return;
   }
@@ -242,9 +266,12 @@ async function refreshPart(index, attempt = 0) {
   const part = partFromSpine(components[index], index);
   const total = components.length;
   prepareResourceTiming(performance, total * 5 + 250);
-  const already =
-    mediaUrlForPart(readAudioSrc(), part.path) ||
-    capturedUrlForPart(mergePerformanceMediaUrls(new Map(), readPlayerResourceEntries()), part.path);
+  const already = knownFor(part);
+  if (!shouldSeekForUrl(already, attempt)) {
+    /* logged below */
+  } else {
+    console.log('[Libby Downloader]', noStoredUrlLine(index, part.path));
+  }
   console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
   const report = (line) => {
     console.log('[Libby Downloader]', line);
