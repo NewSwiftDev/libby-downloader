@@ -269,10 +269,6 @@ function mergePerformanceMediaUrls(map, entries) {
  * @param {unknown} path
  * @returns {string}
  */
-function capturedUrlForPart(map, path) {
-  return findPlayerUrl(map, path);
-}
-
 /**
  * Match a spine path to a player filename. Libby often requests
  * `{uuid}Fmt425-Part22.mp3` while the spine path is only the tail.
@@ -303,42 +299,6 @@ function findPlayerUrl(map, partPath) {
  */
 function refreshTimedOut(startedAt, now, limitMs) {
   return typeof startedAt === 'number' && typeof now === 'number' && now - startedAt >= limitMs;
-}
-
-/**
- * @param {number} index
- * @param {unknown} url
- * @returns {string}
- */
-function sentPlayerUrlLine(index, url) {
-  return `Sent player URL for chapter ${index + 1} to parent (${partFileKey(url) || 'empty'})`;
-}
-
-/**
- * @param {number} index
- * @param {unknown} url
- * @returns {string}
- */
-function receivedPlayerUrlLine(index, url) {
-  return `Received player URL for chapter ${index + 1} (${partFileKey(url) || 'empty'})`;
-}
-
-/**
- * @param {number} index
- * @param {unknown} url
- * @returns {string}
- */
-function forwardedPlayerUrlLine(index, url) {
-  return `Forwarded player URL for chapter ${index + 1} to the extension (${partFileKey(url) || 'empty'})`;
-}
-
-/**
- * @param {number} index
- * @param {unknown} path
- * @returns {string}
- */
-function noStoredUrlLine(index, path) {
-  return `Chapter ${index + 1}: no stored URL for ${partFileKey(path) || 'this part'}; seeking`;
 }
 
 /**
@@ -413,7 +373,7 @@ function partUrlMissReason(kind, index, path) {
 function urlsFromCurrentEntries(parts, entries) {
   const map = mergePerformanceMediaUrls(new Map(), entries);
   return parts.map((part) => {
-    const url = capturedUrlForPart(map, part.path);
+    const url = findPlayerUrl(map, part.path);
     if (url) return { ...part, url, source: /** @type {'player'} */ ('player') };
     return { ...part, url: '', source: /** @type {'missing'} */ ('missing') };
   });
@@ -473,30 +433,39 @@ function partUrlFallbackReason(kind, index, path) {
 }
 
 /**
- * Bound a seek that may never settle when the part is already buffered.
+ * One deadline for a single task. Seek, native save, and chapter fetch all use this.
+ * @param {(signal: AbortSignal) => Promise<unknown> | unknown} work
+ * @param {number} timeoutMs
+ * @param {string} label
+ */
+function withTimeout(work, timeoutMs, label) {
+  const controller = new AbortController();
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  const task = Promise.resolve()
+    .then(() => work(controller.signal))
+    .finally(() => clearTimeout(timer));
+  return Promise.race([task, timeout]);
+}
+
+/**
  * @param {() => unknown} work
  * @param {number} timeoutMs
- * @param {(ms: number) => Promise<void>} sleep
- * @returns {Promise<{ timedOut: boolean, value: unknown }>}
  */
-function withDeadline(work, timeoutMs, sleep) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      resolve(result);
-    };
-    Promise.resolve()
-      .then(work)
-      .then(
-        (value) => finish({ timedOut: false, value }),
-        () => finish({ timedOut: false, value: undefined })
-      );
-    Promise.resolve()
-      .then(() => sleep(timeoutMs))
-      .then(() => finish({ timedOut: true, value: undefined }));
-  });
+async function bounded(work, timeoutMs) {
+  try {
+    return { timedOut: false, value: await withTimeout(work, timeoutMs, 'seek') };
+  } catch (error) {
+    if (error instanceof Error && /timed out/i.test(error.message)) {
+      return { timedOut: true, value: undefined };
+    }
+    throw error;
+  }
 }
 
 /**
@@ -531,13 +500,13 @@ async function waitForPartUrl({
   const mapBefore = mergePerformanceMediaUrls(new Map(), readEntries());
   const remembered =
     (typeof knownUrl === 'string' && isSignedMediaUrl(knownUrl) ? knownUrl : '') ||
-    capturedUrlForPart(mapBefore, part.path) ||
+    findPlayerUrl(mapBefore, part.path) ||
     (readAudioSrc ? mediaUrlForPart(readAudioSrc(), part.path) : '');
   if (beforeSeek) await beforeSeek();
 
   const readNow = () => {
     const map = mergePerformanceMediaUrls(new Map(), readEntries());
-    return capturedUrlForPart(map, part.path) || (readAudioSrc ? mediaUrlForPart(readAudioSrc(), part.path) : '');
+    return findPlayerUrl(map, part.path) || (readAudioSrc ? mediaUrlForPart(readAudioSrc(), part.path) : '');
   };
   const poll = async (budgetMs) => {
     const polls = Math.max(1, Math.ceil(budgetMs / 100));
@@ -549,16 +518,16 @@ async function waitForPartUrl({
     return '';
   };
 
-  const seekResult = await withDeadline(() => seek(part), waitMs, sleep);
+  const seekResult = await bounded(() => seek(part), waitMs);
   if (!seekResult.timedOut && seekResult.value !== false) {
     const fresh = await poll(Math.min(600, waitMs));
     // The audio element can still show the URL we already had while a new
     // seek is underway. That is not a new request.
     if (fresh && fresh !== remembered) return { url: fresh, source: 'player', reason: '' };
     if (seekAway && !remembered) {
-      await withDeadline(() => seekAway(part), waitMs, sleep);
+      await bounded(() => seekAway(part), waitMs);
       await sleep(Math.min(200, waitMs));
-      await withDeadline(() => seek(part), waitMs, sleep);
+      await bounded(() => seek(part), waitMs);
       const nudged = await poll(waitMs);
       if (nudged) return { url: nudged, source: 'player', reason: '' };
     }
@@ -584,23 +553,6 @@ async function waitForPartUrl({
     return { url: '', source: 'missing', reason: partUrlMissReason('seek-unavailable', part.index, part.path) };
   }
   return { url: '', source: 'missing', reason: partUrlMissReason('not-requested', part.index, part.path) };
-}
-
-/**
- * @param {Array<{ index?: number, path?: string }>} missing
- * @param {number} total
- * @returns {string}
- */
-function missingPlayerUrlMessage(missing, total) {
-  const names = missing
-    .slice(0, 3)
-    .map((part) => partFileKey(part.path) || `chapter ${(part.index ?? 0) + 1}`);
-  const extra = missing.length > names.length ? `, +${missing.length - names.length} more` : '';
-  return (
-    `Could not read the player URL for ${missing.length} of ${total} chapters ` +
-    `(${names.join(', ')}${extra}). Libby rejects the older cmpt link with HTTP 500. ` +
-    'Play the audiobook for a few seconds, then try again.'
-  );
 }
 
 /**
@@ -646,74 +598,14 @@ function pageFallbackReason(failure) {
 }
 
 /**
- * Read player media URLs, seeking the player through any part it has not
- * requested yet. Never invents a cmpt URL.
- * @param {{
- *   parts: Array<{ index: number, spinePosition?: number, path: string }>,
- *   readEntries: () => unknown,
- *   seekToPart?: (part: { index: number, spinePosition?: number, path: string }, total: number) => boolean | Promise<boolean>,
- *   sleep?: (ms: number) => Promise<void>,
- *   waitPerPartMs?: number,
- *   gapMs?: number,
- *   onProgress?: (event: { position: number, total: number, index: number }) => void,
- * }} input
- */
-async function collectPlayerChapterUrls({
-  parts,
-  readEntries,
-  seekToPart,
-  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  waitPerPartMs = 2000,
-  gapMs = 400,
-  onProgress,
-}) {
-  const playerUrls = new Map();
-  const absorb = () => mergePerformanceMediaUrls(playerUrls, readEntries());
-  absorb();
-
-  const stillMissing = () => parts.filter((part) => !capturedUrlForPart(playerUrls, part.path));
-  let seekable = typeof seekToPart === 'function';
-  const initialMissing = stillMissing();
-  const polls = Math.max(1, Math.ceil(waitPerPartMs / 100));
-
-  for (let i = 0; i < initialMissing.length; i++) {
-    const part = initialMissing[i];
-    if (capturedUrlForPart(playerUrls, part.path)) continue;
-    if (!seekable) break;
-    const position = parts.findIndex((item) => item.index === part.index);
-    onProgress?.({
-      position: (position < 0 ? part.index : position) + 1,
-      total: parts.length,
-      index: part.index,
-    });
-    const moved = await seekToPart(part, parts.length);
-    if (moved === false) {
-      seekable = false;
-      break;
-    }
-    for (let poll = 0; poll < polls; poll++) {
-      absorb();
-      if (capturedUrlForPart(playerUrls, part.path)) break;
-      await sleep(100);
-    }
-    if (gapMs > 0 && i < initialMissing.length - 1) await sleep(gapMs);
-  }
-  absorb();
-
-  return parts.map((part) => {
-    const url = capturedUrlForPart(playerUrls, part.path);
-    if (url) return { ...part, url, source: /** @type {'player'} */ ('player') };
-    return { ...part, url: '', source: /** @type {'missing'} */ ('missing') };
-  });
-}
-
-/**
  * In-page chapter fetch used when the containing app cannot write files.
  * Each chapter has a timeout so a hung CDN request cannot stall the book.
  * Retry counts match DownloadStore.maxChapterAttempts.
  * Copyright (c) 2026 libby-downloader contributors.
  */
 
+
+{ withTimeout };
 
 /** One retry. Keep in sync with DownloadStore.maxChapterAttempts. */
 const CHAPTER_FETCH_ATTEMPTS = 2;
@@ -792,26 +684,6 @@ async function fetchChapterResponse({ url, index, fetchImpl, signal, attempts, s
     },
     { attempts, sleep }
   );
-}
-
-/**
- * @param {(signal: AbortSignal) => Promise<unknown>} work
- * @param {number} timeoutMs
- * @param {string} label
- */
-function withTimeout(work, timeoutMs, label) {
-  const controller = new AbortController();
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-  const task = Promise.resolve()
-    .then(() => work(controller.signal))
-    .finally(() => clearTimeout(timer));
-  return Promise.race([task, timeout]);
 }
 
 /**
@@ -1114,7 +986,11 @@ window.addEventListener('message', (event) => {
   const { type, state, data } = event.data;
   if (type === MessageTypes.REFRESH_CHAPTER_URL_RESULT || type === MessageTypes.PLAYER_URL_READY) {
     const index = Number.isInteger(event.data.index) ? event.data.index : 0;
-    console.log('[Libby Downloader]', forwardedPlayerUrlLine(index, event.data.url || ''));
+    const file = partFileKey(event.data.url || '');
+    console.log(
+      '[Libby Downloader]',
+      `Forwarded player URL for chapter ${index + 1} to the extension (${file || event.data.error || 'empty'})`
+    );
     if (ext?.runtime?.sendMessage) {
       ext.runtime
         .sendMessage({

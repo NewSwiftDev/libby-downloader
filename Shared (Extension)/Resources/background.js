@@ -219,7 +219,6 @@ async function requestFallback(tabId, book, startIndex, reason, source) {
 }
 
 async function refreshChapterUrl(tabId, index, attempt = 0) {
-  log(`Asking the player for chapter ${index + 1} (attempt ${attempt + 1})`);
   const direct = new Promise((resolve) => {
     playerUrlWaiters.set(index, resolve);
   });
@@ -434,9 +433,6 @@ ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || typeof message !== 'object') return false;
 
   if (message.type === MessageTypes.PLAYER_URL_READY) {
-    log(
-      `Extension received player URL for chapter ${(Number.isInteger(message.index) ? message.index : 0) + 1} from the player frame`
-    );
     const waiter = playerUrlWaiters.get(message.index);
     if (waiter) {
       playerUrlWaiters.delete(message.index);

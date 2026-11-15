@@ -255,7 +255,11 @@ window.addEventListener('message', (event) => {
   const { type, state, data } = event.data;
   if (type === MessageTypes.REFRESH_CHAPTER_URL_RESULT || type === MessageTypes.PLAYER_URL_READY) {
     const index = Number.isInteger(event.data.index) ? event.data.index : 0;
-    console.log('[Libby Downloader]', forwardedPlayerUrlLine(index, event.data.url || ''));
+    const file = partFileKey(event.data.url || '');
+    console.log(
+      '[Libby Downloader]',
+      `Forwarded player URL for chapter ${index + 1} to the extension (${file || event.data.error || 'empty'})`
+    );
     if (ext?.runtime?.sendMessage) {
       ext.runtime
         .sendMessage({

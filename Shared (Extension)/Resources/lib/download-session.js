@@ -5,7 +5,7 @@
  * Copyright (c) 2026 libby-downloader contributors.
  */
 
-import { chapterRetryDelayMs, isRetryableChapterStatus } from './page-fallback.js';
+import { chapterRetryDelayMs, isRetryableChapterStatus, withTimeout } from './page-fallback.js';
 
 export const FRESH_URL_ATTEMPTS = 3;
 
@@ -22,83 +22,27 @@ export const SAVE_DEADLINE_MS = 50000;
  * @returns {Promise<unknown>}
  */
 export function settleFirst(promises, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let pending = promises.length;
-    const finish = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      fn(value);
-    };
-    const timer = setTimeout(() => {
-      const error = /** @type {Error & { timedOut?: boolean, fallback?: boolean }} */ (
-        new Error(`timed out after ${timeoutMs}ms`)
-      );
-      error.timedOut = true;
-      error.fallback = false;
-      finish(reject, error);
-    }, timeoutMs);
-    if (!pending) return;
-    for (const promise of promises) {
-      Promise.resolve(promise).then(
-        (value) => finish(resolve, value),
-        () => {
-          pending -= 1;
-          if (pending === 0) {
-            const error = /** @type {Error & { timedOut?: boolean, fallback?: boolean }} */ (
-              new Error(`timed out after ${timeoutMs}ms`)
-            );
-            error.timedOut = true;
-            error.fallback = false;
-            finish(reject, error);
-          }
+  return withTimeout(
+    () =>
+      new Promise((resolve, reject) => {
+        let pending = promises.length;
+        if (!pending) {
+          reject(new Error(`timed out after ${timeoutMs}ms`));
+          return;
         }
-      );
-    }
-  });
-}
-
-/**
- * Race work against sleep. A late resolution cannot unblock a wait that
- * already moved on, and it cannot leave the chapter loop sitting silently.
- * @template T
- * @param {() => Promise<T>} work
- * @param {number} timeoutMs
- * @param {string} label
- * @param {(ms: number) => Promise<void>} sleep
- * @returns {Promise<T>}
- */
-export function withChapterWatchdog(work, timeoutMs, label) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      const error = /** @type {Error & { timedOut?: boolean, fallback?: boolean }} */ (
-        new Error(`${label} timed out after ${timeoutMs}ms`)
-      );
-      error.timedOut = true;
-      error.fallback = false;
-      reject(error);
-    }, timeoutMs);
-    Promise.resolve()
-      .then(work)
-      .then(
-        (value) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolve(value);
-        },
-        (error) => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          reject(error);
+        for (const promise of promises) {
+          Promise.resolve(promise).then(
+            (value) => resolve(value),
+            () => {
+              pending -= 1;
+              if (!pending) reject(new Error(`timed out after ${timeoutMs}ms`));
+            }
+          );
         }
-      );
-  });
+      }),
+    timeoutMs,
+    'wait'
+  );
 }
 
 /**
@@ -171,7 +115,7 @@ export async function downloadChaptersRefreshingUrls({
     for (let attempt = 0; attempt < attempts; attempt++) {
       let url = typeof chapters[index]?.url === 'string' ? chapters[index].url : '';
       try {
-        const fresh = await withChapterWatchdog(
+        const fresh = await withTimeout(
           () => refreshUrl(chapters[index] || {}, index, attempt),
           playerUrlDeadlineMs,
           `Chapter ${index + 1} player URL`
@@ -197,7 +141,7 @@ export async function downloadChaptersRefreshingUrls({
         break;
       }
       try {
-        await withChapterWatchdog(
+        await withTimeout(
           () => saveChapter({ ...chapters[index], url }, title, index),
           saveDeadlineMs,
           `Chapter ${index + 1} save`

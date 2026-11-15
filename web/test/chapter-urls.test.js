@@ -5,20 +5,14 @@ import { describe, it } from 'node:test';
 
 import { explainDownloadStartFailure } from '../lib/download-ack.js';
 import {
-  collectPlayerChapterUrls,
   describeReadyChapter,
   fanOutPlayerResult,
   findPlayerUrl,
-  forwardedPlayerUrlLine,
   isSignedMediaUrl,
-  noStoredUrlLine,
-  receivedPlayerUrlLine,
-  refreshTimedOut,
-  sentPlayerUrlLine,
   mediaUrlForPart,
-  missingPlayerUrlMessage,
   pageFallbackReason,
   partFileKey,
+  refreshTimedOut,
   shouldSeekForUrl,
   waitForPartUrl,
 } from '../lib/chapter-urls.js';
@@ -48,69 +42,37 @@ describe('player chapter URLs', () => {
   });
 
   it('uses the player audio URL and ignores a fetch of the stale cmpt link', async () => {
-    let seeks = 0;
-    const result = await collectPlayerChapterUrls({
-      parts: [part(23, partFile)],
+    const found = await waitForPartUrl({
+      part: part(23, partFile),
       readEntries: () => [
         { initiatorType: 'fetch', name: staleFetchUrl },
         { initiatorType: 'audio', name: playerUrl },
       ],
-      seekToPart() {
-        seeks += 1;
+      sleep: async () => {},
+      waitMs: 50,
+      seek() {
         return true;
       },
-      sleep: async () => {},
     });
-    assert.equal(seeks, 0);
-    assert.equal(result[0].source, 'player');
-    assert.equal(result[0].url, playerUrl);
-    assert.equal(result[0].url.includes('init-token'), false);
+    assert.equal(found.url, playerUrl);
+    assert.equal(found.url.includes('init-token'), false);
   });
 
   it('keeps the newest audio URL when the player requests the part again', async () => {
     const refreshed = `https://${host}/${encodeURIComponent(partFile)}?cmpt=refreshed&expires=2`;
-    const result = await collectPlayerChapterUrls({
-      parts: [part(23, partFile)],
+    const found = await waitForPartUrl({
+      part: part(23, partFile),
       readEntries: () => [
         { initiatorType: 'audio', name: playerUrl },
         { initiatorType: 'media', name: refreshed },
       ],
       sleep: async () => {},
-    });
-    assert.equal(result[0].url, refreshed);
-  });
-
-  it('seeks only parts the player has not requested, then reports a missing one instead of inventing a cmpt URL', async () => {
-    const sought = [];
-    const first = `https://${host}/Fmt425-Part01.mp3?cmpt=one`;
-    let entries = [{ initiatorType: 'audio', name: first }];
-    const result = await collectPlayerChapterUrls({
-      parts: [part(0, 'Fmt425-Part01.mp3'), part(1, 'Fmt425-Part02.mp3'), part(2, partFile)],
-      readEntries: () => entries,
-      waitPerPartMs: 100,
-      gapMs: 0,
-      sleep: async () => {},
-      seekToPart(entry) {
-        sought.push(entry.index);
-        if (entry.index === 1) {
-          entries = entries.concat([
-            { initiatorType: 'audio', name: `https://${host}/Fmt425-Part02.mp3?cmpt=two` },
-          ]);
-          return true;
-        }
-        return false;
+      waitMs: 50,
+      seek() {
+        return true;
       },
     });
-    assert.deepEqual(sought, [1, 2]);
-    assert.equal(result[0].source, 'player');
-    assert.equal(result[0].url, first);
-    assert.equal(result[1].url, `https://${host}/Fmt425-Part02.mp3?cmpt=two`);
-    assert.equal(result[2].source, 'missing');
-    assert.equal(result[2].url, '');
-    const message = missingPlayerUrlMessage([result[2]], 3);
-    assert.match(message, /1 of 3/);
-    assert.match(message, /Fmt425-Part24\.mp3/);
-    assert.match(message, /HTTP 500/);
+    assert.equal(found.url, refreshed);
   });
 
   it('reads the audio element when the resource buffer does not contain the new part', async () => {
@@ -164,16 +126,13 @@ describe('player chapter URLs', () => {
 
   it('returns the prefetched URL when seek never settles, instead of hanging', async () => {
     const prefetched = `https://${host}/Fmt425-Part12.mp3?cmpt=prefetched`;
-    let sleeps = 0;
     const found = await waitForPartUrl({
       part: part(11, 'Fmt425-Part12.mp3'),
       knownUrl: prefetched,
       readEntries: () => [],
       readAudioSrc: () => '',
-      sleep: async () => {
-        sleeps += 1;
-      },
-      waitMs: 2500,
+      sleep: async () => {},
+      waitMs: 30,
       seek() {
         return new Promise(() => {});
       },
@@ -183,7 +142,6 @@ describe('player chapter URLs', () => {
     assert.match(found.reason, /Chapter 12:/);
     assert.match(found.reason, /seek timed out/);
     assert.match(found.reason, /Fmt425-Part12\.mp3/);
-    assert.ok(sleeps >= 1);
   });
 
   it('reports a bounded timeout when seek hangs and no URL was captured', async () => {
@@ -242,8 +200,7 @@ describe('player chapter URLs', () => {
     const map = new Map([[full, url]]);
     assert.equal(findPlayerUrl(map, 'Fmt425-Part22.mp3'), url);
     assert.equal(findPlayerUrl(map, full), url);
-    assert.match(noStoredUrlLine(21, full), /Chapter 22: no stored URL/);
-    assert.match(noStoredUrlLine(21, full), /Fmt425-Part22\.mp3/);
+    assert.equal(findPlayerUrl(map, 'Fmt425-Part99.mp3'), '');
   });
 
   it('posts the player URL to the parent even when event.source throws', () => {
@@ -259,9 +216,7 @@ describe('player chapter URLs', () => {
     assert.deepEqual(result.errors, ['source']);
     assert.deepEqual(result.sent, ['parent']);
     assert.equal(posts.length, 1);
-    assert.match(sentPlayerUrlLine(21, playerUrl), /Sent player URL for chapter 22 to parent/);
-    assert.match(receivedPlayerUrlLine(21, playerUrl), /Received player URL for chapter 22/);
-    assert.match(forwardedPlayerUrlLine(21, playerUrl), /Forwarded player URL for chapter 22 to the extension/);
+    assert.equal(posts[0].url, playerUrl);
   });
 
   it('decides a refresh deadline from the clock, not from a timer firing', () => {

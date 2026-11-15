@@ -205,7 +205,10 @@ function requestPlayerUrl(index, attempt = 0) {
         if (pending.frame && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(pending.frame);
         pendingRefresh.delete(index);
         if (result?.ok && result.url) {
-          console.log('[Libby Downloader]', receivedPlayerUrlLine(index, result.url));
+          console.log(
+            '[Libby Downloader]',
+            `Received player URL for chapter ${index + 1} (${partFileKey(result.url)})`
+          );
         } else {
           console.error(
             '[Libby Downloader]',
@@ -232,7 +235,6 @@ function requestPlayerUrl(index, attempt = 0) {
     pendingRefresh.set(index, pending);
     pending.timer = setTimeout(giveUp, 12000);
     if (typeof requestAnimationFrame === 'function') pending.frame = requestAnimationFrame(tick);
-    console.log('[Libby Downloader]', `Asked the player for chapter ${index + 1}`);
     ui.iframe.contentWindow.postMessage(
       { type: MessageTypes.REFRESH_CHAPTER_URL, index, attempt },
       iframeOrigin(ui.iframe)

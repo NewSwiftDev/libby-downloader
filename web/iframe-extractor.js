@@ -46,8 +46,9 @@ function knownFor(part) {
 function deliverPartResult(index, result) {
   if (result && result.url) noteSeen(result.url, result.url);
   const payload = { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result };
-  const line = result && result.url
-    ? sentPlayerUrlLine(index, result.url)
+  const file = result && result.url ? partFileKey(result.url) : '';
+  const line = file
+    ? `Sent player URL for chapter ${index + 1} to parent (${file})`
     : `Chapter ${index + 1}: sent failure to parent (${(result && result.error) || 'no URL'})`;
   console.log('[Libby Downloader]', line);
   const channels = fanOutPlayerResult(payload, {
@@ -267,12 +268,6 @@ async function refreshPart(index, attempt = 0) {
   const total = components.length;
   prepareResourceTiming(performance, total * 5 + 250);
   const already = knownFor(part);
-  if (!shouldSeekForUrl(already, attempt)) {
-    /* logged below */
-  } else {
-    console.log('[Libby Downloader]', noStoredUrlLine(index, part.path));
-  }
-  console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
   const report = (line) => {
     console.log('[Libby Downloader]', line);
     window.parent.postMessage(
@@ -283,21 +278,12 @@ async function refreshPart(index, attempt = 0) {
       '*'
     );
   };
-  report(`Reading player URL for chapter ${index + 1} of ${total}`);
-  // A part the player already requested must not be seeked again on the
-  // first try. place.seek() can stay "underway" (for example SEEK to 405.09)
-  // after we have already decided the URL, and that stalls the save.
   if (!shouldSeekForUrl(already, attempt)) {
-    const found = {
-      url: already,
-      source: 'cached',
-      reason: partUrlFallbackReason('already-playing', index, part.path),
-    };
-    const ready = describeReadyChapter(index + 1, found);
-    report(found.reason);
+    const ready = describeReadyChapter(index + 1, { url: already, source: 'cached' });
     report(ready.line);
     return { ok: true, url: already };
   }
+  report(`Chapter ${index + 1}: no stored URL for ${partFileKey(part.path) || 'this part'}; seeking`);
   clearResourceTimings();
   const target = (part.spinePosition ?? index) + (index === total - 1 ? 0.25 : 0.5);
   const away = index === 0 ? (total > 1 ? 1.5 : target) : Math.max(0, (part.spinePosition ?? index) - 1 + 0.5);
@@ -316,7 +302,6 @@ async function refreshPart(index, attempt = 0) {
     },
   });
   const ready = describeReadyChapter(index + 1, found);
-  if (found.reason) report(found.reason);
   if (!ready.ready) {
     console.error('[Libby Downloader]', ready.line);
     return { ok: false, error: ready.line };
