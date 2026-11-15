@@ -126,6 +126,74 @@ describe('player chapter URLs', () => {
     assert.equal(mediaUrlForPart(stale, 'other.mp3'), '');
   });
 
+  it('keeps chapter 1 when a seek to the current part does not request audio again', async () => {
+    const current = `https://${host}/Fmt425-Part01.mp3?cmpt=already-playing`;
+    let seeks = 0;
+    const found = await waitForPartUrl({
+      part: part(0, 'Fmt425-Part01.mp3'),
+      knownUrl: current,
+      readEntries: () => [],
+      readAudioSrc: () => '',
+      sleep: async () => {},
+      waitMs: 200,
+      seek() {
+        seeks += 1;
+        return true;
+      },
+      seekAway() {
+        seeks += 1;
+        return true;
+      },
+    });
+    assert.equal(found.url, current);
+    assert.equal(found.source, 'cached');
+    assert.match(found.reason, /Chapter 1:/);
+    assert.match(found.reason, /already on this part/);
+    assert.match(found.reason, /Fmt425-Part01\.mp3/);
+    assert.ok(seeks >= 1);
+  });
+
+  it('returns the prefetched URL when seek never settles, instead of hanging', async () => {
+    const prefetched = `https://${host}/Fmt425-Part12.mp3?cmpt=prefetched`;
+    let sleeps = 0;
+    const found = await waitForPartUrl({
+      part: part(11, 'Fmt425-Part12.mp3'),
+      knownUrl: prefetched,
+      readEntries: () => [],
+      readAudioSrc: () => '',
+      sleep: async () => {
+        sleeps += 1;
+      },
+      waitMs: 2500,
+      seek() {
+        return new Promise(() => {});
+      },
+    });
+    assert.equal(found.url, prefetched);
+    assert.equal(found.source, 'cached');
+    assert.match(found.reason, /Chapter 12:/);
+    assert.match(found.reason, /seek timed out/);
+    assert.match(found.reason, /Fmt425-Part12\.mp3/);
+    assert.ok(sleeps >= 1);
+  });
+
+  it('reports a bounded timeout when seek hangs and no URL was captured', async () => {
+    const found = await waitForPartUrl({
+      part: part(11, 'Fmt425-Part12.mp3'),
+      readEntries: () => [],
+      readAudioSrc: () => '',
+      sleep: async () => {},
+      waitMs: 100,
+      seek() {
+        return new Promise(() => {});
+      },
+    });
+    assert.equal(found.url, '');
+    assert.match(found.reason, /Chapter 12:/);
+    assert.match(found.reason, /seek timed out/);
+    assert.match(found.reason, /no URL/);
+  });
+
   it('says when the player never requests that part', async () => {
     const found = await waitForPartUrl({
       part: part(27, partFile),

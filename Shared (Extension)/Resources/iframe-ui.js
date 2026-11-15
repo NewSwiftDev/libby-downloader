@@ -332,14 +332,63 @@ function urlsFromCurrentEntries(parts, entries) {
 }
 
 /**
+ * @param {'already-playing' | 'seek-timeout' | 'no-new-request'} kind
+ * @param {number} index
+ * @param {unknown} path
+ * @returns {string}
+ */
+function partUrlFallbackReason(kind, index, path) {
+  const number = index + 1;
+  const file = partFileKey(path) || `chapter ${number}`;
+  if (kind === 'already-playing') {
+    return `Chapter ${number}: the player was already on this part and did not request it again; using the URL already captured (${file})`;
+  }
+  if (kind === 'seek-timeout') {
+    return `Chapter ${number}: seek timed out with no new audio request; using the URL already captured (${file})`;
+  }
+  return `Chapter ${number}: no new audio request after seek; using the URL already captured (${file})`;
+}
+
+/**
+ * Bound a seek that may never settle when the part is already buffered.
+ * @param {() => unknown} work
+ * @param {number} timeoutMs
+ * @param {(ms: number) => Promise<void>} sleep
+ * @returns {Promise<{ timedOut: boolean, value: unknown }>}
+ */
+function withDeadline(work, timeoutMs, sleep) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    Promise.resolve()
+      .then(work)
+      .then(
+        (value) => finish({ timedOut: false, value }),
+        () => finish({ timedOut: false, value: undefined })
+      );
+    Promise.resolve()
+      .then(() => sleep(timeoutMs))
+      .then(() => finish({ timedOut: true, value: undefined }));
+  });
+}
+
+/**
  * Seek one part and wait for the URL the player actually requests.
- * Callers clear the resource buffer first so an earlier signed URL for
- * this file cannot be reused after it has expired.
+ * A seek to the part already playing, or to a part the player has
+ * prefetched, often produces no new audio request. knownUrl is that
+ * earlier capture and is used when the wait ends without a new one.
+ * The seek itself is bounded so a promise that never settles cannot stall.
  * @param {{
  *   part: { index: number, path: string },
  *   readEntries: () => unknown,
  *   readAudioSrc?: () => string,
- *   seek: (part: { index: number, path: string }) => boolean | Promise<boolean>,
+ *   seek: (part: { index: number, path: string }) => unknown,
+ *   seekAway?: (part: { index: number, path: string }) => unknown,
+ *   knownUrl?: string,
  *   beforeSeek?: () => void | Promise<void>,
  *   sleep?: (ms: number) => Promise<void>,
  *   waitMs?: number,
@@ -350,24 +399,66 @@ async function waitForPartUrl({
   readEntries,
   readAudioSrc,
   seek,
+  seekAway,
+  knownUrl = '',
   beforeSeek,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-  waitMs = 4000,
+  waitMs = 2500,
 }) {
+  const mapBefore = mergePerformanceMediaUrls(new Map(), readEntries());
+  const remembered =
+    (typeof knownUrl === 'string' && isSignedMediaUrl(knownUrl) ? knownUrl : '') ||
+    capturedUrlForPart(mapBefore, part.path) ||
+    (readAudioSrc ? mediaUrlForPart(readAudioSrc(), part.path) : '');
   if (beforeSeek) await beforeSeek();
-  const moved = await seek(part);
-  if (moved === false) {
-    return { url: '', reason: partUrlMissReason('seek-unavailable', part.index, part.path) };
-  }
-  const polls = Math.max(1, Math.ceil(waitMs / 100));
-  for (let poll = 0; poll < polls; poll++) {
+
+  const readNow = () => {
     const map = mergePerformanceMediaUrls(new Map(), readEntries());
-    let url = capturedUrlForPart(map, part.path);
-    if (!url && readAudioSrc) url = mediaUrlForPart(readAudioSrc(), part.path);
-    if (url) return { url, reason: '' };
-    if (poll < polls - 1) await sleep(100);
+    return capturedUrlForPart(map, part.path) || (readAudioSrc ? mediaUrlForPart(readAudioSrc(), part.path) : '');
+  };
+  const poll = async (budgetMs) => {
+    const polls = Math.max(1, Math.ceil(budgetMs / 100));
+    for (let attempt = 0; attempt < polls; attempt++) {
+      const url = readNow();
+      if (url) return url;
+      if (attempt < polls - 1) await sleep(100);
+    }
+    return '';
+  };
+
+  const seekResult = await withDeadline(() => seek(part), waitMs, sleep);
+  if (!seekResult.timedOut && seekResult.value !== false) {
+    const fresh = await poll(Math.min(600, waitMs));
+    if (fresh) return { url: fresh, source: 'player', reason: '' };
+    if (seekAway) {
+      await withDeadline(() => seekAway(part), waitMs, sleep);
+      await sleep(Math.min(200, waitMs));
+      await withDeadline(() => seek(part), waitMs, sleep);
+      const nudged = await poll(waitMs);
+      if (nudged) return { url: nudged, source: 'player', reason: '' };
+    }
   }
-  return { url: '', reason: partUrlMissReason('not-requested', part.index, part.path) };
+
+  if (remembered) {
+    const kind = seekResult.timedOut ? 'seek-timeout' : 'already-playing';
+    return {
+      url: remembered,
+      source: 'cached',
+      reason: partUrlFallbackReason(kind, part.index, part.path),
+    };
+  }
+  if (seekResult.timedOut) {
+    const file = partFileKey(part.path) || `chapter ${part.index + 1}`;
+    return {
+      url: '',
+      source: 'missing',
+      reason: `Chapter ${part.index + 1}: seek timed out and the player has no URL for ${file}`,
+    };
+  }
+  if (seekResult.value === false) {
+    return { url: '', source: 'missing', reason: partUrlMissReason('seek-unavailable', part.index, part.path) };
+  }
+  return { url: '', source: 'missing', reason: partUrlMissReason('not-requested', part.index, part.path) };
 }
 
 /**

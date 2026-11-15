@@ -241,6 +241,14 @@ async function refreshPart(index) {
   const part = partFromSpine(components[index], index);
   const total = components.length;
   prepareResourceTiming(performance, total * 5 + 250);
+  const already =
+    mediaUrlForPart(readAudioSrc(), part.path) ||
+    capturedUrlForPart(mergePerformanceMediaUrls(new Map(), readPlayerResourceEntries()), part.path);
+  // Drop old timing entries only after the current part's URL is saved.
+  // Seeking to the part already playing does not start a new request.
+  clearResourceTimings();
+  const target = (part.spinePosition ?? index) + (index === total - 1 ? 0.25 : 0.5);
+  const away = index === 0 ? (total > 1 ? 1.5 : target) : Math.max(0, (part.spinePosition ?? index) - 1 + 0.5);
   console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
   window.parent.postMessage(
     {
@@ -255,21 +263,37 @@ async function refreshPart(index) {
   );
   const found = await waitForPartUrl({
     part,
+    knownUrl: already,
     readEntries: readPlayerResourceEntries,
     readAudioSrc,
     sleep,
-    waitMs: 4000,
-    beforeSeek: clearResourceTimings,
+    waitMs: 2500,
     seek() {
-      const fraction = index === total - 1 ? 0.25 : 0.5;
-      return seekPlayer(BIF, (part.spinePosition ?? index) + fraction);
+      return seekPlayer(BIF, target);
+    },
+    seekAway() {
+      return seekPlayer(BIF, away);
     },
   });
-  if (!found.url) {
-    console.error('[Libby Downloader]', found.reason);
-    return { ok: false, error: found.reason };
+  if (found.reason) {
+    console.log('[Libby Downloader]', found.reason);
+    window.parent.postMessage(
+      {
+        type: MessageTypes.EXTRACTION_PROGRESS,
+        data: { completed: index, total, message: found.reason },
+      },
+      '*'
+    );
   }
-  console.log('[Libby Downloader] Player URL ready for chapter', index + 1);
+  if (!found.url) {
+    console.error('[Libby Downloader]', found.reason || `Chapter ${index + 1}: no player URL`);
+    return { ok: false, error: found.reason || `Chapter ${index + 1}: no player URL` };
+  }
+  console.log(
+    '[Libby Downloader] Player URL ready for chapter',
+    index + 1,
+    found.source === 'cached' ? '(already requested)' : ''
+  );
   return { ok: true, url: found.url };
 }
 
