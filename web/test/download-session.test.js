@@ -98,6 +98,30 @@ describe('per-chapter fresh URLs', () => {
     assert.equal(errors[0], 'Chapter 1: HTTP 500 from dewey.listen.libbyapp.com (a.mp3)');
   });
 
+  it('gives up on a save that never finishes and continues with the next chapter', async () => {
+    const errors = [];
+    const saved = [];
+    const result = await downloadChaptersRefreshingUrls({
+      chapters: [{ url: '' }, { url: '' }],
+      title: 'Long Book',
+      delayMs: 0,
+      attempts: 1,
+      saveDeadlineMs: 30,
+      refreshUrl: async (_chapter, index) => `https://listen.libbyapp.com/${index}.mp3?cmpt=1`,
+      saveChapter: async (_chapter, _title, index) => {
+        if (index === 0) return new Promise(() => {});
+        saved.push(index);
+      },
+      onChapterError(event) {
+        errors.push(event.message);
+      },
+    });
+    assert.deepEqual(saved, [1]);
+    assert.equal(result.completed, 1);
+    assert.equal(result.fallback, false);
+    assert.match(errors[0], /Chapter 1 save timed out after 30ms/);
+  });
+
   it('stops for a dead native channel and names the chapter that was in progress', async () => {
     const channel = new Error('Native chapter 28 timed out after 180000ms');
     channel.fallback = true;

@@ -181,7 +181,7 @@ function handleExtractionError(error) {
 
 const pendingRefresh = new Map();
 
-function requestPlayerUrl(index) {
+function requestPlayerUrl(index, attempt = 0) {
   const iframe = ui.iframe || findPlayerFrame();
   if (iframe) setIframe(iframe);
   if (!ui.iframe?.contentWindow) {
@@ -193,14 +193,13 @@ function requestPlayerUrl(index) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       pendingRefresh.delete(index);
-      resolve({
-        ok: false,
-        error: `Chapter ${index + 1}: timed out waiting for the player to request the audio URL`,
-      });
+      const error = `Chapter ${index + 1}: timed out after 12000ms waiting for the player URL`;
+      console.error('[Libby Downloader]', error);
+      resolve({ ok: false, error });
     }, 12000);
     pendingRefresh.set(index, { resolve, timer });
     ui.iframe.contentWindow.postMessage(
-      { type: MessageTypes.REFRESH_CHAPTER_URL, index },
+      { type: MessageTypes.REFRESH_CHAPTER_URL, index, attempt },
       iframeOrigin(ui.iframe)
     );
   });
@@ -321,7 +320,7 @@ if (!window.location.pathname.includes('/open/loan/')) {
   window.addEventListener('message', handleWindowMessage);
   ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === MessageTypes.REFRESH_CHAPTER_URL) {
-      requestPlayerUrl(message.index)
+      requestPlayerUrl(message.index, message.attempt)
         .then((result) => sendResponse(result))
         .catch((error) => {
           sendResponse({

@@ -249,6 +249,41 @@ function urlsFromCurrentEntries(parts, entries) {
  * @param {unknown} path
  * @returns {string}
  */
+/**
+ * A captured signature is enough on the first try. Seeking the part again
+ * only happens when that signature was rejected or never seen. Libby's seek
+ * can stay "underway" and block the save if we start one we do not need.
+ * @param {unknown} knownUrl
+ * @param {number} [attempt]
+ * @returns {boolean}
+ */
+function shouldSeekForUrl(knownUrl, attempt = 0) {
+  if (typeof attempt === 'number' && attempt > 0) return true;
+  return !isSignedMediaUrl(knownUrl);
+}
+
+/**
+ * Ready means a signed player URL. An empty string is not ready.
+ * @param {number} chapterNumber 1-based
+ * @param {{ url?: string, source?: string, reason?: string }} found
+ * @returns {{ ready: boolean, line: string }}
+ */
+function describeReadyChapter(chapterNumber, found) {
+  const url = found && typeof found.url === 'string' ? found.url : '';
+  if (!isSignedMediaUrl(url)) {
+    const line =
+      found && typeof found.reason === 'string' && found.reason
+        ? found.reason
+        : `Chapter ${chapterNumber}: player URL is empty`;
+    return { ready: false, line };
+  }
+  const how = found.source === 'cached' ? 'already requested' : 'fresh request';
+  return {
+    ready: true,
+    line: `Player URL ready for chapter ${chapterNumber} (${how}, ${partFileKey(url)})`,
+  };
+}
+
 function partUrlFallbackReason(kind, index, path) {
   const number = index + 1;
   const file = partFileKey(path) || `chapter ${number}`;
@@ -341,8 +376,10 @@ async function waitForPartUrl({
   const seekResult = await withDeadline(() => seek(part), waitMs, sleep);
   if (!seekResult.timedOut && seekResult.value !== false) {
     const fresh = await poll(Math.min(600, waitMs));
-    if (fresh) return { url: fresh, source: 'player', reason: '' };
-    if (seekAway) {
+    // The audio element can still show the URL we already had while a new
+    // seek is underway. That is not a new request.
+    if (fresh && fresh !== remembered) return { url: fresh, source: 'player', reason: '' };
+    if (seekAway && !remembered) {
       await withDeadline(() => seekAway(part), waitMs, sleep);
       await sleep(Math.min(200, waitMs));
       await withDeadline(() => seek(part), waitMs, sleep);
@@ -527,7 +564,8 @@ window.addEventListener('message', async (event) => {
   if (type === MessageTypes.REFRESH_CHAPTER_URL) {
     const index = event.data.index;
     try {
-      const result = await refreshPart(index);
+      const attempt = Number.isInteger(event.data.attempt) ? event.data.attempt : 0;
+    const result = await refreshPart(index, attempt);
       replyTo(event, { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Could not read the player URL';
@@ -714,7 +752,7 @@ function clearResourceTimings() {
   }
 }
 
-async function refreshPart(index) {
+async function refreshPart(index, attempt = 0) {
   const BIF = await getBIF();
   if (!BIF) {
     return { ok: false, error: 'BIF object not found. The audiobook player may not have loaded properly.' };
@@ -729,23 +767,35 @@ async function refreshPart(index) {
   const already =
     mediaUrlForPart(readAudioSrc(), part.path) ||
     capturedUrlForPart(mergePerformanceMediaUrls(new Map(), readPlayerResourceEntries()), part.path);
-  // Drop old timing entries only after the current part's URL is saved.
-  // Seeking to the part already playing does not start a new request.
+  console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
+  const report = (line) => {
+    console.log('[Libby Downloader]', line);
+    window.parent.postMessage(
+      {
+        type: MessageTypes.EXTRACTION_PROGRESS,
+        data: { completed: index, total, message: line },
+      },
+      '*'
+    );
+  };
+  report(`Reading player URL for chapter ${index + 1} of ${total}`);
+  // A part the player already requested must not be seeked again on the
+  // first try. place.seek() can stay "underway" (for example SEEK to 405.09)
+  // after we have already decided the URL, and that stalls the save.
+  if (!shouldSeekForUrl(already, attempt)) {
+    const found = {
+      url: already,
+      source: 'cached',
+      reason: partUrlFallbackReason('already-playing', index, part.path),
+    };
+    const ready = describeReadyChapter(index + 1, found);
+    report(found.reason);
+    report(ready.line);
+    return { ok: true, url: already };
+  }
   clearResourceTimings();
   const target = (part.spinePosition ?? index) + (index === total - 1 ? 0.25 : 0.5);
   const away = index === 0 ? (total > 1 ? 1.5 : target) : Math.max(0, (part.spinePosition ?? index) - 1 + 0.5);
-  console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
-  window.parent.postMessage(
-    {
-      type: MessageTypes.EXTRACTION_PROGRESS,
-      data: {
-        completed: index,
-        total,
-        message: `Reading player URL for chapter ${index + 1} of ${total}`,
-      },
-    },
-    '*'
-  );
   const found = await waitForPartUrl({
     part,
     knownUrl: already,
@@ -760,25 +810,13 @@ async function refreshPart(index) {
       return seekPlayer(BIF, away);
     },
   });
-  if (found.reason) {
-    console.log('[Libby Downloader]', found.reason);
-    window.parent.postMessage(
-      {
-        type: MessageTypes.EXTRACTION_PROGRESS,
-        data: { completed: index, total, message: found.reason },
-      },
-      '*'
-    );
+  const ready = describeReadyChapter(index + 1, found);
+  if (found.reason) report(found.reason);
+  if (!ready.ready) {
+    console.error('[Libby Downloader]', ready.line);
+    return { ok: false, error: ready.line };
   }
-  if (!found.url) {
-    console.error('[Libby Downloader]', found.reason || `Chapter ${index + 1}: no player URL`);
-    return { ok: false, error: found.reason || `Chapter ${index + 1}: no player URL` };
-  }
-  console.log(
-    '[Libby Downloader] Player URL ready for chapter',
-    index + 1,
-    found.source === 'cached' ? '(already requested)' : ''
-  );
+  report(ready.line);
   return { ok: true, url: found.url };
 }
 

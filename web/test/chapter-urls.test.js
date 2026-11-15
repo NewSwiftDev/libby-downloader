@@ -6,11 +6,13 @@ import { describe, it } from 'node:test';
 import { explainDownloadStartFailure } from '../lib/download-ack.js';
 import {
   collectPlayerChapterUrls,
+  describeReadyChapter,
   isSignedMediaUrl,
   mediaUrlForPart,
   missingPlayerUrlMessage,
   pageFallbackReason,
   partFileKey,
+  shouldSeekForUrl,
   waitForPartUrl,
 } from '../lib/chapter-urls.js';
 
@@ -192,6 +194,46 @@ describe('player chapter URLs', () => {
     assert.match(found.reason, /Chapter 12:/);
     assert.match(found.reason, /seek timed out/);
     assert.match(found.reason, /no URL/);
+  });
+
+  it('does not call a prefetched chapter ready when the only URL is the one already captured', async () => {
+    const prefetched = `https://${host}/Fmt425-Part22.mp3?cmpt=already`;
+    let seeks = 0;
+    const found = await waitForPartUrl({
+      part: part(21, 'Fmt425-Part22.mp3'),
+      knownUrl: prefetched,
+      readEntries: () => [],
+      readAudioSrc: () => prefetched,
+      sleep: async () => {},
+      waitMs: 200,
+      seek() {
+        seeks += 1;
+        return true;
+      },
+      seekAway() {
+        seeks += 1;
+        return true;
+      },
+    });
+    assert.equal(found.url, prefetched);
+    assert.equal(found.source, 'cached');
+    assert.match(found.reason, /Chapter 22:/);
+    assert.match(found.reason, /Fmt425-Part22\.mp3/);
+    const ready = describeReadyChapter(22, found);
+    assert.equal(ready.ready, true);
+    assert.match(ready.line, /already requested, Fmt425-Part22\.mp3/);
+    assert.equal(ready.line.includes('""'), false);
+    assert.equal(shouldSeekForUrl(prefetched, 0), false);
+    assert.equal(shouldSeekForUrl(prefetched, 1), true);
+    assert.equal(shouldSeekForUrl('', 0), true);
+    assert.equal(seeks >= 1, true);
+  });
+
+  it('refuses an empty player URL instead of logging ready', () => {
+    const ready = describeReadyChapter(22, { url: '', source: 'player', reason: '' });
+    assert.equal(ready.ready, false);
+    assert.match(ready.line, /Chapter 22: player URL is empty/);
+    assert.equal(ready.line.trim().endsWith('""'), false);
   });
 
   it('says when the player never requests that part', async () => {

@@ -12,8 +12,8 @@ import { MessageTypes } from './lib/messages.js';
 import { createMetadataGate } from './lib/metadata-gate.js';
 import { createNativeSaver } from './lib/native-saver.js';
 import { withTimeout } from './lib/page-fallback.js';
+import { pageFallbackReason, partFileKey } from './lib/chapter-urls.js';
 import { describeSaveStrategy, detectBrowserName } from './lib/platform.js';
-import { pageFallbackReason } from './lib/chapter-urls.js';
 import { isAllowedChapterURL } from './lib/urls.js';
 import { validateBookData } from './lib/validators.js';
 
@@ -217,20 +217,28 @@ async function requestFallback(tabId, book, startIndex, reason, source) {
   return text;
 }
 
-async function refreshChapterUrl(tabId, index) {
+async function refreshChapterUrl(tabId, index, attempt = 0) {
+  log(`Asking the player for chapter ${index + 1} (attempt ${attempt + 1})`);
   let response;
   try {
-    response = await ext.tabs.sendMessage(tabId, {
-      type: MessageTypes.REFRESH_CHAPTER_URL,
-      index,
-    });
+    response = await withTimeout(
+      () =>
+        ext.tabs.sendMessage(tabId, {
+          type: MessageTypes.REFRESH_CHAPTER_URL,
+          index,
+          attempt,
+        }),
+      15000,
+      `Chapter ${index + 1} player URL`
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not reach the player';
-    throw new Error(`Chapter ${index + 1}: ${message}`);
+    throw new Error(message.startsWith(`Chapter ${index + 1}`) ? message : `Chapter ${index + 1}: ${message}`);
   }
   if (!response || response.ok !== true || !isAllowedChapterURL(response.url)) {
-    throw new Error(response?.error || `Chapter ${index + 1}: the player did not provide a URL`);
+    throw new Error(response?.error || `Chapter ${index + 1}: player URL is empty`);
   }
+  log(`Player URL accepted for chapter ${index + 1} (${partFileKey(response.url)})`);
   return response.url;
 }
 
@@ -238,10 +246,13 @@ async function nativeCall(work, timeoutMs, label) {
   try {
     return await withTimeout(work, timeoutMs, label);
   } catch (error) {
-    const wrapped = /** @type {Error & { fallback?: boolean }} */ (
-      new Error(error instanceof Error && error.message ? error.message : label)
-    );
-    wrapped.fallback = true;
+    const message = error instanceof Error && error.message ? error.message : label;
+    const timedOut = /timed out/i.test(message);
+    const wrapped = /** @type {Error & { fallback?: boolean, timedOut?: boolean }} */ (new Error(message));
+    // A slow save is this chapter's problem. Only a dead native channel
+    // should switch the rest of the book to the page fallback.
+    wrapped.timedOut = timedOut;
+    wrapped.fallback = !timedOut;
     throw wrapped;
   }
 }
@@ -317,7 +328,7 @@ async function handleStartDownload(bookData, tabId) {
     chapters: book.chapters,
     title: book.metadata.title,
     delayMs: 500,
-    refreshUrl: (_chapter, index) => refreshChapterUrl(tabId, index),
+    refreshUrl: (_chapter, index, attempt) => refreshChapterUrl(tabId, index, attempt),
     onBeforeChapter(index, total) {
       const message = `Reading player URL for chapter ${index + 1} of ${total}`;
       log(message);
@@ -373,12 +384,19 @@ async function handleStartDownload(bookData, tabId) {
 
     const result = await downloadChaptersRefreshingUrls({
       ...saving,
-      saveChapter: (chapter, title, index) =>
-        nativeCall(
+      saveChapter: (chapter, title, index) => {
+        const message = `Saving chapter ${index + 1} of ${book.chapters.length}`;
+        log(message);
+        notify(tabId, {
+          type: MessageTypes.DOWNLOAD_PROGRESS,
+          progress: { completed: state.completed, total: state.total, message },
+        });
+        return nativeCall(
           () => saver.saveChapter(chapter, title, index),
-          180000,
+          45000,
           `Native chapter ${index + 1}`
-        ),
+        );
+      },
     });
 
     if (result.fallback) {

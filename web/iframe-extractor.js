@@ -42,7 +42,8 @@ window.addEventListener('message', async (event) => {
   if (type === MessageTypes.REFRESH_CHAPTER_URL) {
     const index = event.data.index;
     try {
-      const result = await refreshPart(index);
+      const attempt = Number.isInteger(event.data.attempt) ? event.data.attempt : 0;
+    const result = await refreshPart(index, attempt);
       replyTo(event, { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Could not read the player URL';
@@ -229,7 +230,7 @@ function clearResourceTimings() {
   }
 }
 
-async function refreshPart(index) {
+async function refreshPart(index, attempt = 0) {
   const BIF = await getBIF();
   if (!BIF) {
     return { ok: false, error: 'BIF object not found. The audiobook player may not have loaded properly.' };
@@ -244,23 +245,35 @@ async function refreshPart(index) {
   const already =
     mediaUrlForPart(readAudioSrc(), part.path) ||
     capturedUrlForPart(mergePerformanceMediaUrls(new Map(), readPlayerResourceEntries()), part.path);
-  // Drop old timing entries only after the current part's URL is saved.
-  // Seeking to the part already playing does not start a new request.
+  console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
+  const report = (line) => {
+    console.log('[Libby Downloader]', line);
+    window.parent.postMessage(
+      {
+        type: MessageTypes.EXTRACTION_PROGRESS,
+        data: { completed: index, total, message: line },
+      },
+      '*'
+    );
+  };
+  report(`Reading player URL for chapter ${index + 1} of ${total}`);
+  // A part the player already requested must not be seeked again on the
+  // first try. place.seek() can stay "underway" (for example SEEK to 405.09)
+  // after we have already decided the URL, and that stalls the save.
+  if (!shouldSeekForUrl(already, attempt)) {
+    const found = {
+      url: already,
+      source: 'cached',
+      reason: partUrlFallbackReason('already-playing', index, part.path),
+    };
+    const ready = describeReadyChapter(index + 1, found);
+    report(found.reason);
+    report(ready.line);
+    return { ok: true, url: already };
+  }
   clearResourceTimings();
   const target = (part.spinePosition ?? index) + (index === total - 1 ? 0.25 : 0.5);
   const away = index === 0 ? (total > 1 ? 1.5 : target) : Math.max(0, (part.spinePosition ?? index) - 1 + 0.5);
-  console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
-  window.parent.postMessage(
-    {
-      type: MessageTypes.EXTRACTION_PROGRESS,
-      data: {
-        completed: index,
-        total,
-        message: `Reading player URL for chapter ${index + 1} of ${total}`,
-      },
-    },
-    '*'
-  );
   const found = await waitForPartUrl({
     part,
     knownUrl: already,
@@ -275,25 +288,13 @@ async function refreshPart(index) {
       return seekPlayer(BIF, away);
     },
   });
-  if (found.reason) {
-    console.log('[Libby Downloader]', found.reason);
-    window.parent.postMessage(
-      {
-        type: MessageTypes.EXTRACTION_PROGRESS,
-        data: { completed: index, total, message: found.reason },
-      },
-      '*'
-    );
+  const ready = describeReadyChapter(index + 1, found);
+  if (found.reason) report(found.reason);
+  if (!ready.ready) {
+    console.error('[Libby Downloader]', ready.line);
+    return { ok: false, error: ready.line };
   }
-  if (!found.url) {
-    console.error('[Libby Downloader]', found.reason || `Chapter ${index + 1}: no player URL`);
-    return { ok: false, error: found.reason || `Chapter ${index + 1}: no player URL` };
-  }
-  console.log(
-    '[Libby Downloader] Player URL ready for chapter',
-    index + 1,
-    found.source === 'cached' ? '(already requested)' : ''
-  );
+  report(ready.line);
   return { ok: true, url: found.url };
 }
 

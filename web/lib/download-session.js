@@ -9,6 +9,52 @@ import { chapterRetryDelayMs, isRetryableChapterStatus } from './page-fallback.j
 
 export const FRESH_URL_ATTEMPTS = 3;
 
+/** Player-URL round trip, then the native save. Either one must end. */
+export const PLAYER_URL_DEADLINE_MS = 20000;
+export const SAVE_DEADLINE_MS = 50000;
+
+/**
+ * Race work against sleep. A late resolution cannot unblock a wait that
+ * already moved on, and it cannot leave the chapter loop sitting silently.
+ * @template T
+ * @param {() => Promise<T>} work
+ * @param {number} timeoutMs
+ * @param {string} label
+ * @param {(ms: number) => Promise<void>} sleep
+ * @returns {Promise<T>}
+ */
+export function withChapterWatchdog(work, timeoutMs, label) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      const error = /** @type {Error & { timedOut?: boolean, fallback?: boolean }} */ (
+        new Error(`${label} timed out after ${timeoutMs}ms`)
+      );
+      error.timedOut = true;
+      error.fallback = false;
+      reject(error);
+    }, timeoutMs);
+    Promise.resolve()
+      .then(work)
+      .then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(error);
+        }
+      );
+  });
+}
+
 /**
  * 403 and 410 are treated as an expired signature: refresh the player URL
  * instead of repeating the same request.
@@ -47,6 +93,8 @@ export function isNativeChannelFailure(error) {
  *   sleep?: (ms: number) => Promise<void>,
  *   delayMs?: number,
  *   attempts?: number,
+ *   playerUrlDeadlineMs?: number,
+ *   saveDeadlineMs?: number,
  * }} input
  */
 export async function downloadChaptersRefreshingUrls({
@@ -60,6 +108,8 @@ export async function downloadChaptersRefreshingUrls({
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   delayMs = 0,
   attempts = FRESH_URL_ATTEMPTS,
+  playerUrlDeadlineMs = PLAYER_URL_DEADLINE_MS,
+  saveDeadlineMs = SAVE_DEADLINE_MS,
 }) {
   const errors = [];
   let completed = 0;
@@ -74,7 +124,11 @@ export async function downloadChaptersRefreshingUrls({
     for (let attempt = 0; attempt < attempts; attempt++) {
       let url = typeof chapters[index]?.url === 'string' ? chapters[index].url : '';
       try {
-        const fresh = await refreshUrl(chapters[index] || {}, index, attempt);
+        const fresh = await withChapterWatchdog(
+          () => refreshUrl(chapters[index] || {}, index, attempt),
+          playerUrlDeadlineMs,
+          `Chapter ${index + 1} player URL`
+        );
         if (typeof fresh === 'string' && fresh) {
           url = fresh;
           if (chapters[index]) chapters[index].url = fresh;
@@ -96,7 +150,11 @@ export async function downloadChaptersRefreshingUrls({
         break;
       }
       try {
-        await saveChapter({ ...chapters[index], url }, title, index);
+        await withChapterWatchdog(
+          () => saveChapter({ ...chapters[index], url }, title, index),
+          saveDeadlineMs,
+          `Chapter ${index + 1} save`
+        );
         saved = true;
         break;
       } catch (error) {

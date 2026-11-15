@@ -141,6 +141,41 @@ export function urlsFromCurrentEntries(parts, entries) {
  * @param {unknown} path
  * @returns {string}
  */
+/**
+ * A captured signature is enough on the first try. Seeking the part again
+ * only happens when that signature was rejected or never seen. Libby's seek
+ * can stay "underway" and block the save if we start one we do not need.
+ * @param {unknown} knownUrl
+ * @param {number} [attempt]
+ * @returns {boolean}
+ */
+export function shouldSeekForUrl(knownUrl, attempt = 0) {
+  if (typeof attempt === 'number' && attempt > 0) return true;
+  return !isSignedMediaUrl(knownUrl);
+}
+
+/**
+ * Ready means a signed player URL. An empty string is not ready.
+ * @param {number} chapterNumber 1-based
+ * @param {{ url?: string, source?: string, reason?: string }} found
+ * @returns {{ ready: boolean, line: string }}
+ */
+export function describeReadyChapter(chapterNumber, found) {
+  const url = found && typeof found.url === 'string' ? found.url : '';
+  if (!isSignedMediaUrl(url)) {
+    const line =
+      found && typeof found.reason === 'string' && found.reason
+        ? found.reason
+        : `Chapter ${chapterNumber}: player URL is empty`;
+    return { ready: false, line };
+  }
+  const how = found.source === 'cached' ? 'already requested' : 'fresh request';
+  return {
+    ready: true,
+    line: `Player URL ready for chapter ${chapterNumber} (${how}, ${partFileKey(url)})`,
+  };
+}
+
 export function partUrlFallbackReason(kind, index, path) {
   const number = index + 1;
   const file = partFileKey(path) || `chapter ${number}`;
@@ -233,8 +268,10 @@ export async function waitForPartUrl({
   const seekResult = await withDeadline(() => seek(part), waitMs, sleep);
   if (!seekResult.timedOut && seekResult.value !== false) {
     const fresh = await poll(Math.min(600, waitMs));
-    if (fresh) return { url: fresh, source: 'player', reason: '' };
-    if (seekAway) {
+    // The audio element can still show the URL we already had while a new
+    // seek is underway. That is not a new request.
+    if (fresh && fresh !== remembered) return { url: fresh, source: 'player', reason: '' };
+    if (seekAway && !remembered) {
       await withDeadline(() => seekAway(part), waitMs, sleep);
       await sleep(Math.min(200, waitMs));
       await withDeadline(() => seek(part), waitMs, sleep);
