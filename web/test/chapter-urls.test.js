@@ -3,12 +3,15 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
+import { explainDownloadStartFailure } from '../lib/download-ack.js';
 import {
   collectPlayerChapterUrls,
   isSignedMediaUrl,
+  mediaUrlForPart,
   missingPlayerUrlMessage,
   pageFallbackReason,
   partFileKey,
+  waitForPartUrl,
 } from '../lib/chapter-urls.js';
 
 const root = resolve(import.meta.dirname, '../..');
@@ -101,6 +104,61 @@ describe('player chapter URLs', () => {
     assert.match(message, /HTTP 500/);
   });
 
+  it('reads the audio element when the resource buffer does not contain the new part', async () => {
+    const stale = `https://${host}/${encodeURIComponent(partFile)}?cmpt=old`;
+    let entries = [{ initiatorType: 'audio', name: stale }];
+    let src = '';
+    const found = await waitForPartUrl({
+      part: part(27, partFile),
+      readEntries: () => entries,
+      readAudioSrc: () => src,
+      sleep: async () => {},
+      waitMs: 200,
+      beforeSeek() {
+        entries = [];
+      },
+      seek() {
+        src = playerUrl;
+        return true;
+      },
+    });
+    assert.equal(found.url, playerUrl);
+    assert.equal(mediaUrlForPart(stale, 'other.mp3'), '');
+  });
+
+  it('says when the player never requests that part', async () => {
+    const found = await waitForPartUrl({
+      part: part(27, partFile),
+      readEntries: () => [],
+      readAudioSrc: () => '',
+      sleep: async () => {},
+      waitMs: 100,
+      seek() {
+        return true;
+      },
+    });
+    assert.equal(found.url, '');
+    assert.match(found.reason, /Chapter 28/);
+    assert.match(found.reason, /Fmt425-Part24\.mp3/);
+    assert.match(found.reason, /did not request/);
+  });
+
+  it('explains an empty start-download reply instead of a bare Download failed', () => {
+    const text = explainDownloadStartFailure(undefined);
+    assert.match(text, /Safari closed the extension message/);
+    assert.notEqual(text, 'Download failed');
+    assert.equal(explainDownloadStartFailure({ success: true, accepted: true }), '');
+    assert.equal(
+      explainDownloadStartFailure({ success: false, error: 'Chapter 28: HTTP 500 from dewey.listen.libbyapp.com' }),
+      'Chapter 28: HTTP 500 from dewey.listen.libbyapp.com'
+    );
+    assert.match(explainDownloadStartFailure({ success: false }), /without a reason/);
+    const content = readFileSync(resolve(root, 'web/content.js'), 'utf8');
+    assert.match(content, /console\.error\('\[Libby Downloader\]', text\)/);
+    const background = readFileSync(resolve(root, 'web/background.js'), 'utf8');
+    assert.match(background, /accepted: true/);
+  });
+
   it('does not prefix a chapter failure with the native-messaging strategy sentence', () => {
     const reason = pageFallbackReason(
       'Chapter 24: HTTP 500 from dewey-798448a22291a2d039c2a861cf221e24.listen.libbyapp.com'
@@ -113,7 +171,8 @@ describe('player chapter URLs', () => {
     const ui = readFileSync(resolve(root, 'web/iframe-ui.js'), 'utf8');
     assert.equal(ui.includes('Native save did not finish'), false);
     const extractor = readFileSync(resolve(root, 'web/iframe-extractor.js'), 'utf8');
-    assert.match(extractor, /collectPlayerChapterUrls/);
+    assert.match(extractor, /waitForPartUrl/);
+    assert.match(extractor, /clearResourceTimings/);
     assert.match(extractor, /getEntriesByType\('resource'\)/);
     assert.equal(extractor.includes('HTMLMediaElement'), false);
     assert.equal(extractor.includes('odreadCmptParams[spine.spinePosition]'), false);

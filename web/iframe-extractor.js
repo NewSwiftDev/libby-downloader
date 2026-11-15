@@ -28,8 +28,35 @@ Response.prototype.json = async function () {
   return result;
 };
 
+function replyTo(event, payload) {
+  const target = event.source;
+  if (target && typeof target.postMessage === 'function') {
+    target.postMessage(payload, '*');
+    return;
+  }
+  window.parent.postMessage(payload, '*');
+}
+
 window.addEventListener('message', async (event) => {
-  if (!event.data || event.data.type !== MessageTypes.EXTRACT_LIBBY_BOOK) return;
+  const type = event.data?.type;
+  if (type === MessageTypes.REFRESH_CHAPTER_URL) {
+    const index = event.data.index;
+    try {
+      const result = await refreshPart(index);
+      replyTo(event, { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Could not read the player URL';
+      console.error('[Libby Downloader]', errorMessage);
+      replyTo(event, {
+        type: MessageTypes.REFRESH_CHAPTER_URL_RESULT,
+        index,
+        ok: false,
+        error: errorMessage,
+      });
+    }
+    return;
+  }
+  if (type !== MessageTypes.EXTRACT_LIBBY_BOOK) return;
 
   try {
     const bookData = await extractBookData();
@@ -79,17 +106,12 @@ async function extractBookData() {
     console.warn('[Libby Downloader] Could not extract cover URL:', error);
   }
 
-  const parts = components.map((spine, index) => ({
-    index,
-    spinePosition: spine.meta?.['-odread-spine-position'] ?? spine.spinePosition ?? index,
-    path: spine.meta?.path || '',
-    duration: spine.meta?.['audio-duration'] || spine.meta?.duration || spine.duration || 0,
-  }));
-  const gathered = await gatherPlayerUrls(BIF, parts);
-  const missing = gathered.filter((part) => part.source !== 'player');
-  if (missing.length > 0) {
-    throw new Error(missingPlayerUrlMessage(missing, gathered.length));
-  }
+  const parts = components.map((spine, index) => partFromSpine(spine, index));
+  // Already-buffered media URLs are hints only. Each file is signed again
+  // immediately before it is saved, because a 109-part seek finishes long
+  // before the later downloads.
+  prepareResourceTiming(typeof performance !== 'undefined' ? performance : null, parts.length * 5 + 250);
+  const gathered = urlsFromCurrentEntries(parts, readPlayerResourceEntries());
 
   const chapters = [];
   let cumulativeTime = 0;
@@ -161,12 +183,27 @@ function extractCryptoParams(result, source) {
   );
 }
 
+function partFromSpine(spine, index) {
+  return {
+    index,
+    spinePosition: spine.meta?.['-odread-spine-position'] ?? spine.spinePosition ?? index,
+    path: spine.meta?.path || '',
+    duration: spine.meta?.['audio-duration'] || spine.meta?.duration || spine.duration || 0,
+  };
+}
+
 function readPlayerResourceEntries() {
   try {
     return performance.getEntriesByType('resource');
   } catch {
     return [];
   }
+}
+
+function readAudioSrc() {
+  const media = document.querySelector('audio, video');
+  if (!media) return '';
+  return media.currentSrc || media.src || '';
 }
 
 function seekPlayer(bif, floc) {
@@ -184,45 +221,56 @@ function seekPlayer(bif, floc) {
   return false;
 }
 
-async function gatherPlayerUrls(bif, parts) {
-  const origFloc = bif.objects?.spool?.focus?.floc ?? 0;
-  let didSeek = false;
+function clearResourceTimings() {
   try {
-    return await collectPlayerChapterUrls({
-      parts,
-      readEntries: readPlayerResourceEntries,
-      sleep,
-      onProgress(event) {
-        console.log(
-          '[Libby Downloader] Reading player URL for chapter',
-          event.position,
-          'of',
-          event.total
-        );
-        window.parent.postMessage(
-          {
-            type: MessageTypes.EXTRACTION_PROGRESS,
-            data: {
-              completed: Math.max(0, event.position - 1),
-              total: event.total,
-              message: `Reading player URL for chapter ${event.position} of ${event.total}`,
-            },
-          },
-          '*'
-        );
-      },
-      seekToPart(part, total) {
-        const ordinal = parts.findIndex((item) => item.index === part.index);
-        const fraction = ordinal === total - 1 ? 0.25 : 0.5;
-        const floc = (part.spinePosition ?? part.index) + fraction;
-        const moved = seekPlayer(bif, floc);
-        if (moved) didSeek = true;
-        return moved;
-      },
-    });
-  } finally {
-    if (didSeek) seekPlayer(bif, origFloc);
+    if (typeof performance.clearResourceTimings === 'function') performance.clearResourceTimings();
+  } catch {
+    /* The next poll still checks the audio element src. */
   }
+}
+
+async function refreshPart(index) {
+  const BIF = await getBIF();
+  if (!BIF) {
+    return { ok: false, error: 'BIF object not found. The audiobook player may not have loaded properly.' };
+  }
+  const components = BIF.objects?.spool?.components;
+  if (!Array.isArray(components) || !components[index]) {
+    return { ok: false, error: `Chapter ${index + 1}: that part is not in the player` };
+  }
+  const part = partFromSpine(components[index], index);
+  const total = components.length;
+  prepareResourceTiming(performance, total * 5 + 250);
+  console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
+  window.parent.postMessage(
+    {
+      type: MessageTypes.EXTRACTION_PROGRESS,
+      data: {
+        completed: index,
+        total,
+        message: `Reading player URL for chapter ${index + 1} of ${total}`,
+      },
+    },
+    '*'
+  );
+  const found = await waitForPartUrl({
+    part,
+    readEntries: readPlayerResourceEntries,
+    readAudioSrc,
+    sleep,
+    waitMs: 4000,
+    beforeSeek: clearResourceTimings,
+    seek() {
+      const fraction = index === total - 1 ? 0.25 : 0.5;
+      return seekPlayer(BIF, (part.spinePosition ?? index) + fraction);
+    },
+  });
+  if (!found.url) {
+    console.error('[Libby Downloader]', found.reason);
+    return { ok: false, error: found.reason };
+  }
+  console.log('[Libby Downloader] Player URL ready for chapter', index + 1);
+  return { ok: true, url: found.url };
 }
 
 function resolveAuthors(creators) {

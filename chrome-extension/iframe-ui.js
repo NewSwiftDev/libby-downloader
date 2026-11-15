@@ -23,6 +23,10 @@ const MessageTypes = {
   START_DOWNLOAD: 'START_DOWNLOAD',
   DOWNLOAD_PROGRESS: 'DOWNLOAD_PROGRESS',
   DOWNLOAD_COMPLETE: 'DOWNLOAD_COMPLETE',
+  DOWNLOAD_FAILED: 'DOWNLOAD_FAILED',
+  CHAPTER_FAILED: 'CHAPTER_FAILED',
+  REFRESH_CHAPTER_URL: 'REFRESH_CHAPTER_URL',
+  REFRESH_CHAPTER_URL_RESULT: 'REFRESH_CHAPTER_URL_RESULT',
   DOWNLOAD_FALLBACK: 'DOWNLOAD_FALLBACK',
   GET_DOWNLOAD_STATUS: 'GET_DOWNLOAD_STATUS',
   GET_STATE: 'GET_STATE',
@@ -269,6 +273,101 @@ function capturedUrlForPart(map, path) {
   if (!key) return '';
   const url = map.get(key);
   return typeof url === 'string' ? url : '';
+}
+
+/**
+ * Signed media URL for this part only. A different part's src does not count.
+ * @param {unknown} src
+ * @param {unknown} partPath
+ * @returns {string}
+ */
+function mediaUrlForPart(src, partPath) {
+  if (typeof src !== 'string' || !isSignedMediaUrl(src)) return '';
+  if (partFileKey(src) !== partFileKey(partPath)) return '';
+  return src;
+}
+
+/**
+ * Safari's resource-timing buffer stops recording once it fills, so a long
+ * seek sweep would go blind. Raise it before watching for the next part.
+ * @param {{ setResourceTimingBufferSize?: (size: number) => void } | null | undefined} perf
+ * @param {number} minimum
+ */
+function prepareResourceTiming(perf, minimum) {
+  if (!perf || typeof perf.setResourceTimingBufferSize !== 'function') return;
+  try {
+    perf.setResourceTimingBufferSize(Math.max(250, minimum));
+  } catch {
+    /* Some WebKit builds reject an unsupported size. Capture still polls. */
+  }
+}
+
+/**
+ * @param {'seek-unavailable' | 'not-requested'} kind
+ * @param {number} index
+ * @param {unknown} path
+ * @returns {string}
+ */
+function partUrlMissReason(kind, index, path) {
+  const number = index + 1;
+  const file = partFileKey(path) || `chapter ${number}`;
+  if (kind === 'seek-unavailable') {
+    return `Chapter ${number}: the player has no seek control, so there is no fresh URL for ${file}`;
+  }
+  return `Chapter ${number}: the player did not request ${file} after seek`;
+}
+
+/**
+ * URLs already sitting in the resource buffer. Does not seek.
+ * @param {Array<{ index: number, path: string }>} parts
+ * @param {unknown} entries
+ */
+function urlsFromCurrentEntries(parts, entries) {
+  const map = mergePerformanceMediaUrls(new Map(), entries);
+  return parts.map((part) => {
+    const url = capturedUrlForPart(map, part.path);
+    if (url) return { ...part, url, source: /** @type {'player'} */ ('player') };
+    return { ...part, url: '', source: /** @type {'missing'} */ ('missing') };
+  });
+}
+
+/**
+ * Seek one part and wait for the URL the player actually requests.
+ * Callers clear the resource buffer first so an earlier signed URL for
+ * this file cannot be reused after it has expired.
+ * @param {{
+ *   part: { index: number, path: string },
+ *   readEntries: () => unknown,
+ *   readAudioSrc?: () => string,
+ *   seek: (part: { index: number, path: string }) => boolean | Promise<boolean>,
+ *   beforeSeek?: () => void | Promise<void>,
+ *   sleep?: (ms: number) => Promise<void>,
+ *   waitMs?: number,
+ * }} input
+ */
+async function waitForPartUrl({
+  part,
+  readEntries,
+  readAudioSrc,
+  seek,
+  beforeSeek,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  waitMs = 4000,
+}) {
+  if (beforeSeek) await beforeSeek();
+  const moved = await seek(part);
+  if (moved === false) {
+    return { url: '', reason: partUrlMissReason('seek-unavailable', part.index, part.path) };
+  }
+  const polls = Math.max(1, Math.ceil(waitMs / 100));
+  for (let poll = 0; poll < polls; poll++) {
+    const map = mergePerformanceMediaUrls(new Map(), readEntries());
+    let url = capturedUrlForPart(map, part.path);
+    if (!url && readAudioSrc) url = mediaUrlForPart(readAudioSrc(), part.path);
+    if (url) return { url, reason: '' };
+    if (poll < polls - 1) await sleep(100);
+  }
+  return { url: '', reason: partUrlMissReason('not-requested', part.index, part.path) };
 }
 
 /**

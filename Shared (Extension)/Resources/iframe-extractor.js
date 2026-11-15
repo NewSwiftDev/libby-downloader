@@ -23,6 +23,10 @@ const MessageTypes = {
   START_DOWNLOAD: 'START_DOWNLOAD',
   DOWNLOAD_PROGRESS: 'DOWNLOAD_PROGRESS',
   DOWNLOAD_COMPLETE: 'DOWNLOAD_COMPLETE',
+  DOWNLOAD_FAILED: 'DOWNLOAD_FAILED',
+  CHAPTER_FAILED: 'CHAPTER_FAILED',
+  REFRESH_CHAPTER_URL: 'REFRESH_CHAPTER_URL',
+  REFRESH_CHAPTER_URL_RESULT: 'REFRESH_CHAPTER_URL_RESULT',
   DOWNLOAD_FALLBACK: 'DOWNLOAD_FALLBACK',
   GET_DOWNLOAD_STATUS: 'GET_DOWNLOAD_STATUS',
   GET_STATE: 'GET_STATE',
@@ -184,6 +188,101 @@ function capturedUrlForPart(map, path) {
 }
 
 /**
+ * Signed media URL for this part only. A different part's src does not count.
+ * @param {unknown} src
+ * @param {unknown} partPath
+ * @returns {string}
+ */
+function mediaUrlForPart(src, partPath) {
+  if (typeof src !== 'string' || !isSignedMediaUrl(src)) return '';
+  if (partFileKey(src) !== partFileKey(partPath)) return '';
+  return src;
+}
+
+/**
+ * Safari's resource-timing buffer stops recording once it fills, so a long
+ * seek sweep would go blind. Raise it before watching for the next part.
+ * @param {{ setResourceTimingBufferSize?: (size: number) => void } | null | undefined} perf
+ * @param {number} minimum
+ */
+function prepareResourceTiming(perf, minimum) {
+  if (!perf || typeof perf.setResourceTimingBufferSize !== 'function') return;
+  try {
+    perf.setResourceTimingBufferSize(Math.max(250, minimum));
+  } catch {
+    /* Some WebKit builds reject an unsupported size. Capture still polls. */
+  }
+}
+
+/**
+ * @param {'seek-unavailable' | 'not-requested'} kind
+ * @param {number} index
+ * @param {unknown} path
+ * @returns {string}
+ */
+function partUrlMissReason(kind, index, path) {
+  const number = index + 1;
+  const file = partFileKey(path) || `chapter ${number}`;
+  if (kind === 'seek-unavailable') {
+    return `Chapter ${number}: the player has no seek control, so there is no fresh URL for ${file}`;
+  }
+  return `Chapter ${number}: the player did not request ${file} after seek`;
+}
+
+/**
+ * URLs already sitting in the resource buffer. Does not seek.
+ * @param {Array<{ index: number, path: string }>} parts
+ * @param {unknown} entries
+ */
+function urlsFromCurrentEntries(parts, entries) {
+  const map = mergePerformanceMediaUrls(new Map(), entries);
+  return parts.map((part) => {
+    const url = capturedUrlForPart(map, part.path);
+    if (url) return { ...part, url, source: /** @type {'player'} */ ('player') };
+    return { ...part, url: '', source: /** @type {'missing'} */ ('missing') };
+  });
+}
+
+/**
+ * Seek one part and wait for the URL the player actually requests.
+ * Callers clear the resource buffer first so an earlier signed URL for
+ * this file cannot be reused after it has expired.
+ * @param {{
+ *   part: { index: number, path: string },
+ *   readEntries: () => unknown,
+ *   readAudioSrc?: () => string,
+ *   seek: (part: { index: number, path: string }) => boolean | Promise<boolean>,
+ *   beforeSeek?: () => void | Promise<void>,
+ *   sleep?: (ms: number) => Promise<void>,
+ *   waitMs?: number,
+ * }} input
+ */
+async function waitForPartUrl({
+  part,
+  readEntries,
+  readAudioSrc,
+  seek,
+  beforeSeek,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  waitMs = 4000,
+}) {
+  if (beforeSeek) await beforeSeek();
+  const moved = await seek(part);
+  if (moved === false) {
+    return { url: '', reason: partUrlMissReason('seek-unavailable', part.index, part.path) };
+  }
+  const polls = Math.max(1, Math.ceil(waitMs / 100));
+  for (let poll = 0; poll < polls; poll++) {
+    const map = mergePerformanceMediaUrls(new Map(), readEntries());
+    let url = capturedUrlForPart(map, part.path);
+    if (!url && readAudioSrc) url = mediaUrlForPart(readAudioSrc(), part.path);
+    if (url) return { url, reason: '' };
+    if (poll < polls - 1) await sleep(100);
+  }
+  return { url: '', reason: partUrlMissReason('not-requested', part.index, part.path) };
+}
+
+/**
  * @param {Array<{ index?: number, path?: string }>} missing
  * @param {number} total
  * @returns {string}
@@ -323,8 +422,35 @@ Response.prototype.json = async function () {
   return result;
 };
 
+function replyTo(event, payload) {
+  const target = event.source;
+  if (target && typeof target.postMessage === 'function') {
+    target.postMessage(payload, '*');
+    return;
+  }
+  window.parent.postMessage(payload, '*');
+}
+
 window.addEventListener('message', async (event) => {
-  if (!event.data || event.data.type !== MessageTypes.EXTRACT_LIBBY_BOOK) return;
+  const type = event.data?.type;
+  if (type === MessageTypes.REFRESH_CHAPTER_URL) {
+    const index = event.data.index;
+    try {
+      const result = await refreshPart(index);
+      replyTo(event, { type: MessageTypes.REFRESH_CHAPTER_URL_RESULT, index, ...result });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Could not read the player URL';
+      console.error('[Libby Downloader]', errorMessage);
+      replyTo(event, {
+        type: MessageTypes.REFRESH_CHAPTER_URL_RESULT,
+        index,
+        ok: false,
+        error: errorMessage,
+      });
+    }
+    return;
+  }
+  if (type !== MessageTypes.EXTRACT_LIBBY_BOOK) return;
 
   try {
     const bookData = await extractBookData();
@@ -374,17 +500,12 @@ async function extractBookData() {
     console.warn('[Libby Downloader] Could not extract cover URL:', error);
   }
 
-  const parts = components.map((spine, index) => ({
-    index,
-    spinePosition: spine.meta?.['-odread-spine-position'] ?? spine.spinePosition ?? index,
-    path: spine.meta?.path || '',
-    duration: spine.meta?.['audio-duration'] || spine.meta?.duration || spine.duration || 0,
-  }));
-  const gathered = await gatherPlayerUrls(BIF, parts);
-  const missing = gathered.filter((part) => part.source !== 'player');
-  if (missing.length > 0) {
-    throw new Error(missingPlayerUrlMessage(missing, gathered.length));
-  }
+  const parts = components.map((spine, index) => partFromSpine(spine, index));
+  // Already-buffered media URLs are hints only. Each file is signed again
+  // immediately before it is saved, because a 109-part seek finishes long
+  // before the later downloads.
+  prepareResourceTiming(typeof performance !== 'undefined' ? performance : null, parts.length * 5 + 250);
+  const gathered = urlsFromCurrentEntries(parts, readPlayerResourceEntries());
 
   const chapters = [];
   let cumulativeTime = 0;
@@ -456,12 +577,27 @@ function extractCryptoParams(result, source) {
   );
 }
 
+function partFromSpine(spine, index) {
+  return {
+    index,
+    spinePosition: spine.meta?.['-odread-spine-position'] ?? spine.spinePosition ?? index,
+    path: spine.meta?.path || '',
+    duration: spine.meta?.['audio-duration'] || spine.meta?.duration || spine.duration || 0,
+  };
+}
+
 function readPlayerResourceEntries() {
   try {
     return performance.getEntriesByType('resource');
   } catch {
     return [];
   }
+}
+
+function readAudioSrc() {
+  const media = document.querySelector('audio, video');
+  if (!media) return '';
+  return media.currentSrc || media.src || '';
 }
 
 function seekPlayer(bif, floc) {
@@ -479,45 +615,56 @@ function seekPlayer(bif, floc) {
   return false;
 }
 
-async function gatherPlayerUrls(bif, parts) {
-  const origFloc = bif.objects?.spool?.focus?.floc ?? 0;
-  let didSeek = false;
+function clearResourceTimings() {
   try {
-    return await collectPlayerChapterUrls({
-      parts,
-      readEntries: readPlayerResourceEntries,
-      sleep,
-      onProgress(event) {
-        console.log(
-          '[Libby Downloader] Reading player URL for chapter',
-          event.position,
-          'of',
-          event.total
-        );
-        window.parent.postMessage(
-          {
-            type: MessageTypes.EXTRACTION_PROGRESS,
-            data: {
-              completed: Math.max(0, event.position - 1),
-              total: event.total,
-              message: `Reading player URL for chapter ${event.position} of ${event.total}`,
-            },
-          },
-          '*'
-        );
-      },
-      seekToPart(part, total) {
-        const ordinal = parts.findIndex((item) => item.index === part.index);
-        const fraction = ordinal === total - 1 ? 0.25 : 0.5;
-        const floc = (part.spinePosition ?? part.index) + fraction;
-        const moved = seekPlayer(bif, floc);
-        if (moved) didSeek = true;
-        return moved;
-      },
-    });
-  } finally {
-    if (didSeek) seekPlayer(bif, origFloc);
+    if (typeof performance.clearResourceTimings === 'function') performance.clearResourceTimings();
+  } catch {
+    /* The next poll still checks the audio element src. */
   }
+}
+
+async function refreshPart(index) {
+  const BIF = await getBIF();
+  if (!BIF) {
+    return { ok: false, error: 'BIF object not found. The audiobook player may not have loaded properly.' };
+  }
+  const components = BIF.objects?.spool?.components;
+  if (!Array.isArray(components) || !components[index]) {
+    return { ok: false, error: `Chapter ${index + 1}: that part is not in the player` };
+  }
+  const part = partFromSpine(components[index], index);
+  const total = components.length;
+  prepareResourceTiming(performance, total * 5 + 250);
+  console.log('[Libby Downloader] Reading player URL for chapter', index + 1, 'of', total);
+  window.parent.postMessage(
+    {
+      type: MessageTypes.EXTRACTION_PROGRESS,
+      data: {
+        completed: index,
+        total,
+        message: `Reading player URL for chapter ${index + 1} of ${total}`,
+      },
+    },
+    '*'
+  );
+  const found = await waitForPartUrl({
+    part,
+    readEntries: readPlayerResourceEntries,
+    readAudioSrc,
+    sleep,
+    waitMs: 4000,
+    beforeSeek: clearResourceTimings,
+    seek() {
+      const fraction = index === total - 1 ? 0.25 : 0.5;
+      return seekPlayer(BIF, (part.spinePosition ?? index) + fraction);
+    },
+  });
+  if (!found.url) {
+    console.error('[Libby Downloader]', found.reason);
+    return { ok: false, error: found.reason };
+  }
+  console.log('[Libby Downloader] Player URL ready for chapter', index + 1);
+  return { ok: true, url: found.url };
 }
 
 function resolveAuthors(creators) {

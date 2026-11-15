@@ -7,7 +7,7 @@
  */
 
 import { createChromeSaver } from './lib/chrome-downloads.js';
-import { downloadAllChapters } from './lib/download-orchestrator.js';
+import { downloadChaptersRefreshingUrls } from './lib/download-session.js';
 import { MessageTypes } from './lib/messages.js';
 import { createMetadataGate } from './lib/metadata-gate.js';
 import { createNativeSaver } from './lib/native-saver.js';
@@ -38,7 +38,7 @@ function requireBook(data) {
   if (!validateBookData(data)) {
     throw new Error('Invalid book data');
   }
-  const bad = data.chapters.find((chapter) => !isAllowedChapterURL(chapter.url));
+  const bad = data.chapters.find((chapter) => chapter.url && !isAllowedChapterURL(chapter.url));
   if (bad) {
     throw new Error('Refusing chapter URL outside Libby');
   }
@@ -190,12 +190,15 @@ async function finish(tabId, result) {
   state.completed = result.completed;
   state.failed = result.failed;
   state.total = result.total;
+  const detail = result.errors?.[result.errors.length - 1]?.error || result.detail || '';
+  state.detail = detail;
   await notify(tabId, {
     type: MessageTypes.DOWNLOAD_COMPLETE,
     result: {
       completed: result.completed,
       failed: result.failed,
       total: result.total,
+      detail,
     },
   });
 }
@@ -212,6 +215,23 @@ async function requestFallback(tabId, book, startIndex, reason, source) {
     reason: text,
   });
   return text;
+}
+
+async function refreshChapterUrl(tabId, index) {
+  let response;
+  try {
+    response = await ext.tabs.sendMessage(tabId, {
+      type: MessageTypes.REFRESH_CHAPTER_URL,
+      index,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not reach the player';
+    throw new Error(`Chapter ${index + 1}: ${message}`);
+  }
+  if (!response || response.ok !== true || !isAllowedChapterURL(response.url)) {
+    throw new Error(response?.error || `Chapter ${index + 1}: the player did not provide a URL`);
+  }
+  return response.url;
 }
 
 async function nativeCall(work, timeoutMs, label) {
@@ -274,20 +294,47 @@ async function handleStartDownload(bookData, tabId) {
   const onProgress = (completed, total) => {
     state.completed = completed;
     state.total = total;
+    const message = `Saving chapter ${completed} of ${total}`;
     log(`Progress ${completed} of ${total}`);
     notify(tabId, {
       type: MessageTypes.DOWNLOAD_PROGRESS,
-      progress: { completed, total },
+      progress: { completed, total, message },
     });
+  };
+
+  const reportChapterError = async ({ message }) => {
+    state.detail = message;
+    state.failed += 1;
+    console.error('[Libby Downloader]', message);
+    await notify(tabId, {
+      type: MessageTypes.CHAPTER_FAILED,
+      error: message,
+      progress: { completed: state.completed, total: state.total, message },
+    });
+  };
+
+  const saving = {
+    chapters: book.chapters,
+    title: book.metadata.title,
+    delayMs: 500,
+    refreshUrl: (_chapter, index) => refreshChapterUrl(tabId, index),
+    onBeforeChapter(index, total) {
+      const message = `Reading player URL for chapter ${index + 1} of ${total}`;
+      log(message);
+      return notify(tabId, {
+        type: MessageTypes.DOWNLOAD_PROGRESS,
+        progress: { completed: state.completed, total, message },
+      });
+    },
+    onProgress,
+    onChapterError: reportChapterError,
   };
 
   if (decision.strategy === 'chrome-downloads') {
     const saver = createChromeSaver(ext.downloads);
-    const result = await downloadAllChapters({
-      chapters: book.chapters,
-      title: book.metadata.title,
+    const result = await downloadChaptersRefreshingUrls({
+      ...saving,
       saveChapter: (chapter, title, index) => saver.saveChapter(chapter, title, index),
-      onProgress,
     });
     await writeMetadataOnce(book, () => saver.saveMetadata(book.metadata, book.chapters, book.metadata.title));
     await finish(tabId, result);
@@ -324,24 +371,23 @@ async function handleStartDownload(bookData, tabId) {
     }
     log('Native ping ok', ping.platform || '', ping.path || '');
 
-    const result = await downloadAllChapters({
-      chapters: book.chapters,
-      title: book.metadata.title,
+    const result = await downloadChaptersRefreshingUrls({
+      ...saving,
       saveChapter: (chapter, title, index) =>
         nativeCall(
           () => saver.saveChapter(chapter, title, index),
           180000,
           `Native chapter ${index + 1}`
         ),
-      onProgress,
     });
 
     if (result.fallback) {
       const chapterError = result.errors[result.errors.length - 1]?.error || 'native-save-failed';
-      const reason = await requestFallback(tabId, book, result.completed, chapterError, 'chapter');
+      const resumeAt = Number.isInteger(result.startIndex) ? result.startIndex : result.completed;
+      const reason = await requestFallback(tabId, book, resumeAt, chapterError, 'chapter');
       return decisionResult('native', 'blob-fallback', reason, {
         fallback: true,
-        startIndex: result.completed,
+        startIndex: resumeAt,
         result,
       });
     }
@@ -387,13 +433,27 @@ ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: false, error: 'No tab ID available' });
       return true;
     }
-
-    handleStartDownload(message.data, tabId)
-      .then((result) => sendResponse(result))
+    let book;
+    try {
+      book = requireBook(message.data);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Invalid book data';
+      sendResponse({ success: false, error: detail });
+      return true;
+    }
+    // Reply before any chapter is saved. Holding this channel open for a
+    // 109-part book makes Safari resolve the loan page's sendMessage with
+    // no payload, and the page used to alert "Download failed" with nothing
+    // in the console. Completion and errors are pushed with tabs.sendMessage.
+    sendResponse({ success: true, accepted: true });
+    Promise.resolve()
+      .then(() => handleStartDownload(book, tabId))
       .catch((error) => {
+        const detail = error instanceof Error && error.message ? error.message : 'Download failed';
         state.phase = 'error';
-        state.detail = error instanceof Error ? error.message : 'Unknown error';
-        sendResponse({ success: false, error: state.detail });
+        state.detail = detail;
+        console.error('[Libby Downloader]', detail);
+        notify(tabId, { type: MessageTypes.DOWNLOAD_FAILED, error: detail });
       });
     return true;
   }
